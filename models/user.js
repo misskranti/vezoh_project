@@ -1,142 +1,100 @@
-const { v4: uuidv4 } = require("uuid");
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-
-const addressSchema = new mongoose.Schema(
-  {
-    addressId: {
-      type: String,
-      required: true,
-      default: () => uuidv4(), 
-    },
-    label: {
-      type: String,
-      required: true,
-    },
-    street: {
-      type: String,
-      required: true,
-    },
-    city: {
-      type: String,
-      required: true,
-    },
-    state: {
-      type: String,
-      required: true,
-    },
-    postalCode: {
-      type: String,
-      required: true,
-    },
-    coordinates: {
-      lat: {
-        type: Number,
-        required: true,
-      },
-      lng: {
-        type: Number,
-        required: true,
-      },
-    },
-  },
-  { _id: false }
-);
+const mongoose = require("mongoose")
 
 const userSchema = new mongoose.Schema(
   {
-    userId: {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    email: {
       type: String,
       required: true,
       unique: true,
-      index: true,
+      lowercase: true,
     },
-    phonenumber: {
+    phone: {
       type: String,
       required: true,
       unique: true,
-      match: /^[0-9]{10,15}$/,
-      index: true,
-    },
-    emailaddress: {
-      type: String,
-      unique: true,
-      sparse: true,
-      match: /^\S+@\S+\.\S+$/,
-      index: true,
-    },
-    fullname: {
-      type: String,
-      required: true,
-      index: true,
-    },
-    avatarUrl: {
-      type: String,
-    },
-    role: {
-      type: String,
-      enum: ["user", "driver"],
-      default: "user",
-      index: true,
     },
     password: {
       type: String,
       required: true,
-      minlength: 8,
+      minlength: 6,
     },
-    addresses: [addressSchema],
-    createdAt: {
-      type: Date,
-      default: Date.now,
+    profileImage: {
+      type: String,
+      default: null,
     },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
+    isVerified: {
+      type: Boolean,
+      default: false,
     },
-    lastLogin: {
-      type: Date,
+    verificationCode: {
+      type: String,
+      default: null,
     },
+    addresses: [
+      {
+        type: {
+          type: String,
+          enum: ["home", "work", "other"],
+          default: "other",
+        },
+        address: String,
+        coordinates: {
+          latitude: Number,
+          longitude: Number,
+        },
+        isDefault: {
+          type: Boolean,
+          default: false,
+        },
+      },
+    ],
+    paymentMethods: [
+      {
+        type: {
+          type: String,
+          enum: ["card", "wallet", "cash"],
+          default: "cash",
+        },
+        details: mongoose.Schema.Types.Mixed,
+        isDefault: {
+          type: Boolean,
+          default: false,
+        },
+      },
+    ],
     preferences: {
-      notifications: {
-        type: Boolean,
-        default: true,
-      },
-      preferredPaymentMethod: {
+      language: {
         type: String,
+        default: "en",
       },
+      notifications: {
+        push: { type: Boolean, default: true },
+        sms: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+      },
+    },
+    rating: {
+      average: { type: Number, default: 5.0 },
+      count: { type: Number, default: 0 },
+    },
+    status: {
+      type: String,
+      enum: ["active", "inactive", "suspended"],
+      default: "active",
     },
   },
-  { timestamps: true }
-);
+  {
+    timestamps: true,
+  },
+)
 
-userSchema.index({ phonenumber: 1, emailaddress: 1 });
+userSchema.index({ email: 1 })
+userSchema.index({ phone: 1 })
+userSchema.index({ "addresses.coordinates": "2dsphere" })
 
-userSchema.index(
-  { "addresses.addressId": 1 },
-  { 
-    unique: true, 
-    sparse: true,
-    partialFilterExpression: { 
-      "addresses.addressId": { $exists: true, $ne: null } 
-    }
-  }
-);
-
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
-
-userSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
-};
-
-const User = mongoose.model("User", userSchema);
-
-module.exports = User;
+module.exports = mongoose.model("User", userSchema)

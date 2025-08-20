@@ -1,26 +1,47 @@
-const express = require("express");
-const dotenv = require("dotenv");
-const connectDB = require("./config/database");
+const express = require("express")
+const mongoose = require("mongoose")
+const cors = require("cors")
+const http = require("http")
 
-const authRoutes = require("./routes/auth");
-const userRoutes = require("./routes/user");
+require("dotenv").config()
 
-dotenv.config();
+const app = express()
+const server = http.createServer(app)
 
-const app = express();
+app.use(cors())
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 
-app.use(express.json());
+// Database connection
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log("MongoDB connected successfully"))
+  .catch((err) => console.log("MongoDB connection error:", err))
 
-connectDB();
+app.use("/api/auth", require("./routes/auth"))
 
-app.get("/", (req, res) => {
-  res.send("Vezoh API is running...");
-});
 
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
+app.use((err, req, res, next) => {
+  console.error(err.stack)
+  res.status(500).json({
+    success: false,
+    message: "Something went wrong!",
+    error: process.env.NODE_ENV === "development" ? err.message : "Internal server error",
+  })
+})
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+// 404 handler
+// app.use("*", (req, res) => {
+//   res.status(404).json({
+//     success: false,
+//     message: "Route not found",
+//   })
+// })
+
+const PORT = process.env.PORT || 5000
+server.listen(PORT, () => {
+  console.log(`Vezoh Backend Server running on port ${PORT}`)
+})

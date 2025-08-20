@@ -1,5 +1,0 @@
-[2025-08-18T11:11:01.590Z] MongoDB connected for index build
-[2025-08-18T11:11:01.657Z] 
- Checking indexes for: User
-[2025-08-18T11:11:03.245Z]     Existing indexes: ["_id_","email_1","userId_1","phoneNumber_1","name_1","role_1","addresses.addressId_1","phoneNumber_1_email_1"]
-[2025-08-18T11:11:30.532Z]  Error building indexes: An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { v: 2, unique: true, key: { email: 1 }, name: "email_1", sparse: true, background: true }, existing index: { v: 2, unique: true, key: { email: 1 }, name: "email_1", background: true }

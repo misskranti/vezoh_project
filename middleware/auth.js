@@ -1,46 +1,207 @@
-const jwt = require("jsonwebtoken");
-const User = require("../models/user");
-const Driver = require("../models/Driver");
+const jwt = require("jsonwebtoken")
+const User = require("../models/User")
+const Driver = require("../models/Driver")
 
-const authMiddleware = async (req, res, next) => {
-  let token;
+const auth = async (req, res, next) => {
+  try {
+    const authHeader = req.header("Authorization")
+    console.log("[v0] Auth header received:", authHeader)
 
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith("Bearer")
-  ) {
-    try {
-      token = req.headers.authorization.split(" ")[1];
-
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      const user = await User.findById(decoded.userId).select(
-        "-password -__v -createdAt -updatedAt"
-      );
-
-      if (!user) {
-        return res.status(401).json({ error: "User not found" });
-      }
-
-      req.user = user.toObject();
-
-      if (decoded.role === "driver") {
-        const driver = await Driver.findOne({ user: decoded.userId }).select(
-          "-__v -createdAt -updatedAt"
-        );
-        req.user.driver = driver;
-      }
-
-      next();
-    } catch (err) {
-      console.error("Auth error:", err.message);
-      return res.status(401).json({ error: "Not authorized, token failed" });
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: "No authorization header provided",
+      })
     }
-  }
 
-  if (!token) {
-    return res.status(401).json({ error: "Not authorized, no token" });
-  }
-};
+    let token
+    if (authHeader.startsWith("Bearer ")) {
+      token = authHeader.replace("Bearer ", "")
+    } else {
+      token = authHeader
+    }
 
-module.exports = authMiddleware;
+    console.log("[v0] Extracted token:", token ? token.substring(0, 20) + "..." : "null")
+
+    if (!token || token === "null" || token === "undefined") {
+      return res.status(401).json({
+        success: false,
+        message: "No token provided, authorization denied",
+      })
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+    console.log("[v0] Decoded token:", decoded)
+
+    // Check if it's a user or driver token
+    if (decoded.userType === "user") {
+      const user = await User.findById(decoded.id).select("-password")
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: "User not found",
+        })
+      }
+      req.user = user
+      req.userType = "user"
+    } else if (decoded.userType === "driver") {
+      const driver = await Driver.findById(decoded.id).select("-password")
+      if (!driver) {
+        return res.status(401).json({
+          success: false,
+          message: "Driver not found",
+        })
+      }
+      req.user = driver
+      req.userType = "driver"
+    } else {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token type",
+      })
+    }
+
+    next()
+  } catch (error) {
+    console.error("Auth middleware error:", error)
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token format",
+      })
+    } else if (error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        success: false,
+        message: "Token has expired",
+      })
+    }
+    res.status(401).json({
+      success: false,
+      message: "Token is not valid",
+    })
+  }
+}
+
+const driverAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.header("Authorization")
+    console.log("[v0] Driver auth header:", authHeader)
+
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: "No authorization header provided",
+      })
+    }
+
+    let token
+    if (authHeader.startsWith("Bearer ")) {
+      token = authHeader.replace("Bearer ", "")
+    } else {
+      token = authHeader
+    }
+
+    if (!token || token === "null" || token === "undefined") {
+      return res.status(401).json({
+        success: false,
+        message: "No token provided, authorization denied",
+      })
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+
+    if (decoded.userType !== "driver") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Driver token required.",
+      })
+    }
+
+    const driver = await Driver.findById(decoded.id).select("-password")
+    if (!driver) {
+      return res.status(401).json({
+        success: false,
+        message: "Driver not found",
+      })
+    }
+
+    req.user = driver
+    req.userType = "driver"
+    next()
+  } catch (error) {
+    console.error("Driver auth middleware error:", error)
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token format",
+      })
+    }
+    res.status(401).json({
+      success: false,
+      message: "Token is not valid",
+    })
+  }
+}
+
+const userAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.header("Authorization")
+    console.log("[v0] User auth header:", authHeader)
+
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: "No authorization header provided",
+      })
+    }
+
+    let token
+    if (authHeader.startsWith("Bearer ")) {
+      token = authHeader.replace("Bearer ", "")
+    } else {
+      token = authHeader
+    }
+
+    if (!token || token === "null" || token === "undefined") {
+      return res.status(401).json({
+        success: false,
+        message: "No token provided, authorization denied",
+      })
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+
+    if (decoded.userType !== "user") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. User token required.",
+      })
+    }
+
+    const user = await User.findById(decoded.id).select("-password")
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found",
+      })
+    }
+
+    req.user = user
+    req.userType = "user"
+    next()
+  } catch (error) {
+    console.error("User auth middleware error:", error)
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token format",
+      })
+    }
+    res.status(401).json({
+      success: false,
+      message: "Token is not valid",
+    })
+  }
+}
+
+module.exports = { auth, driverAuth, userAuth }
