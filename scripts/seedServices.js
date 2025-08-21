@@ -1,5 +1,5 @@
 const mongoose = require("mongoose")
-const Service = require("../models/Service")
+const Service = require("../models/service")
 const path = require("path")
 
 require("dotenv").config({ path: path.join(__dirname, "../.env") })

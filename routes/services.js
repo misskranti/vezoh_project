@@ -1,7 +1,7 @@
 const express = require("express")
 const router = express.Router()
 const auth = require("../middleware/auth")
-const Service = require("../models/Service")
+const Service = require("../models/service")
 
 router.get("/", async (req, res) => {
   try {
