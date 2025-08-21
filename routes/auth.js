@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs")
 const jwt = require("jsonwebtoken")
 const twilio = require("twilio")
 const nodemailer = require("nodemailer")
-const User = require("../models/User")
+const User = require("../models/user")
 const Driver = require("../models/Driver")
 const { auth } = require("../middleware/auth")
 const { generateOTP, formatPhoneNumber, isValidEmail, isValidPhone } = require("../utils/helpers")
@@ -194,9 +194,7 @@ router.post("/register/user", async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/register/driver
-// @desc    Register a new driver
-// @access  Public
+
 router.post("/register/driver", async (req, res) => {
   try {
     const { name, email, phone, password, licenseNumber, vehicleType, services } = req.body
@@ -314,9 +312,7 @@ router.post("/register/driver", async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/login/user
-// @desc    Login user
-// @access  Public
+
 router.post("/login/user", async (req, res) => {
   try {
     const { identifier, password } = req.body
@@ -386,9 +382,7 @@ router.post("/login/user", async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/login/driver
-// @desc    Login driver
-// @access  Public
+
 router.post("/login/driver", async (req, res) => {
   try {
     const { identifier, password } = req.body
@@ -455,9 +449,7 @@ router.post("/login/driver", async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/verify-otp
-// @desc    Verify OTP for phone number
-// @access  Public
+
 router.post("/verify-otp", async (req, res) => {
   try {
     const { phone, otp, userType } = req.body
@@ -551,9 +543,7 @@ router.post("/verify-otp", async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/resend-otp
-// @desc    Resend OTP
-// @access  Public
+
 router.post("/resend-otp", async (req, res) => {
   try {
     const { phone, userType } = req.body
@@ -611,9 +601,7 @@ router.post("/resend-otp", async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/forgot-password
-// @desc    Send password reset OTP to email
-// @access  Public
+
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email, userType } = req.body
@@ -692,9 +680,7 @@ router.post("/forgot-password", async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/reset-password
-// @desc    Reset password with email OTP
-// @access  Public
+
 router.post("/reset-password", async (req, res) => {
   try {
     const { email, otp, newPassword, userType } = req.body
@@ -774,9 +760,7 @@ router.post("/reset-password", async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/change-password
-// @desc    Change password for authenticated user
-// @access  Private
+
 router.post("/change-password", auth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body
@@ -835,9 +819,7 @@ router.post("/change-password", auth, async (req, res) => {
   }
 })
 
-// @route   GET /api/auth/me
-// @desc    Get current user/driver info
-// @access  Private
+
 router.get("/me", auth, async (req, res) => {
   try {
     const Model = req.userType === "user" ? User : Driver
@@ -866,13 +848,9 @@ router.get("/me", auth, async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/logout
-// @desc    Logout user (client-side token removal)
-// @access  Private
+
 router.post("/logout", auth, async (req, res) => {
   try {
-    // In a more sophisticated setup, you might want to blacklist the token
-    // For now, we'll just send a success response as token removal happens client-side
 
     res.json({
       success: true,

@@ -65,7 +65,7 @@ async function seedServices() {
 
     process.exit(0)
   } catch (error) {
-    console.error("❌ Error seeding services:", error.message)
+    console.error("Error seeding services:", error.message)
     process.exit(1)
   }
 }

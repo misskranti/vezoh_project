@@ -3,7 +3,6 @@ const router = express.Router()
 const auth = require("../middleware/auth")
 const Service = require("../models/Service")
 
-// GET /api/services - Get all available services
 router.get("/", async (req, res) => {
   try {
     const services = await Service.find({ active: true })
@@ -23,7 +22,6 @@ router.get("/", async (req, res) => {
   }
 })
 
-// GET /api/services/:serviceId - Get specific service details
 router.get("/:serviceId", async (req, res) => {
   try {
     const { serviceId } = req.params
