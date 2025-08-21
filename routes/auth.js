@@ -2,10 +2,12 @@ const express = require("express")
 const bcrypt = require("bcryptjs")
 const jwt = require("jsonwebtoken")
 const twilio = require("twilio")
+const nodemailer = require("nodemailer")
 const User = require("../models/User")
 const Driver = require("../models/Driver")
 const { auth } = require("../middleware/auth")
 const { generateOTP, formatPhoneNumber, isValidEmail, isValidPhone } = require("../utils/helpers")
+const { sendEmailOTP } = require("../utils/emailService")
 
 const router = express.Router()
 
@@ -44,7 +46,7 @@ const sendOTP = async (phone, otp) => {
     // Check if Twilio credentials are configured and valid
     if (!client || !process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER === "your_twilio_phone") {
       console.log(`[MOCK SMS] OTP ${otp} would be sent to ${phone} (Twilio not configured)`)
-  return true
+      return true
     }
 
     // Send actual SMS using Twilio
@@ -67,6 +69,33 @@ const sendOTP = async (phone, otp) => {
     return false
   }
 }
+
+// Send OTP via email
+// const sendEmailOTP = async (email, otp, name) => {
+//   try {
+//     const transporter = nodemailer.createTransport({
+//       service: "gmail",
+//       auth: {
+//         user: process.env.EMAIL_USER,
+//         pass: process.env.EMAIL_PASS,
+//       },
+//     })
+
+//     const mailOptions = {
+//       from: process.env.EMAIL_USER,
+//       to: email,
+//       subject: "Vezoh Password Reset OTP",
+//       text: `Hello ${name},\n\nYour password reset OTP is: ${otp}. This code will expire in 10 minutes.\n\nThank you,\nVezoh Team`,
+//     }
+
+//     await transporter.sendMail(mailOptions)
+//     console.log(`Email sent successfully to ${email}`)
+//     return true
+//   } catch (error) {
+//     console.error(`Failed to send email to ${email}:`, error.message)
+//     return false
+//   }
+// }
 
 // @route   POST /api/auth/register/user
 // @desc    Register a new user
@@ -290,19 +319,19 @@ router.post("/register/driver", async (req, res) => {
 // @access  Public
 router.post("/login/user", async (req, res) => {
   try {
-    const { email, password } = req.body
+    const { identifier, password } = req.body
 
     // Validation
-    if (!email || !password) {
+    if (!identifier || !password) {
       return res.status(400).json({
         success: false,
-        message: "Please provide email and password",
+        message: "Please provide email/phone and password",
       })
     }
 
     // Find user by email or phone
     const user = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { phone: formatPhoneNumber(email) }],
+      $or: [{ email: identifier.toLowerCase() }, { phone: formatPhoneNumber(identifier) }],
     })
 
     if (!user) {
@@ -362,19 +391,19 @@ router.post("/login/user", async (req, res) => {
 // @access  Public
 router.post("/login/driver", async (req, res) => {
   try {
-    const { email, password } = req.body
+    const { identifier, password } = req.body
 
     // Validation
-    if (!email || !password) {
+    if (!identifier || !password) {
       return res.status(400).json({
         success: false,
-        message: "Please provide email and password",
+        message: "Please provide email/phone and password",
       })
     }
 
     // Find driver by email or phone
     const driver = await Driver.findOne({
-      $or: [{ email: email.toLowerCase() }, { phone: formatPhoneNumber(email) }],
+      $or: [{ email: identifier.toLowerCase() }, { phone: formatPhoneNumber(identifier) }],
     })
 
     if (!driver) {
@@ -453,7 +482,7 @@ router.post("/verify-otp", async (req, res) => {
 
     if (userType) {
       // If userType is provided, check specific collection
-    const Model = userType === "user" ? User : Driver
+      const Model = userType === "user" ? User : Driver
       user = await Model.findOne({ phone: formattedPhone })
       foundUserType = userType
     } else {
@@ -583,7 +612,7 @@ router.post("/resend-otp", async (req, res) => {
 })
 
 // @route   POST /api/auth/forgot-password
-// @desc    Send password reset OTP
+// @desc    Send password reset OTP to email
 // @access  Public
 router.post("/forgot-password", async (req, res) => {
   try {
@@ -592,7 +621,14 @@ router.post("/forgot-password", async (req, res) => {
     if (!email) {
       return res.status(400).json({
         success: false,
-        message: "Please provide email or phone number",
+        message: "Please provide email address",
+      })
+    }
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address",
       })
     }
 
@@ -608,22 +644,16 @@ router.post("/forgot-password", async (req, res) => {
 
     if (userType) {
       // If userType is provided, check specific collection
-    const Model = userType === "user" ? User : Driver
-      user = await Model.findOne({
-        $or: [{ email: email.toLowerCase() }, { phone: formatPhoneNumber(email) }],
-      })
+      const Model = userType === "user" ? User : Driver
+      user = await Model.findOne({ email: email.toLowerCase() })
       foundUserType = userType
     } else {
       // If userType not provided, check both collections
-      user = await User.findOne({
-        $or: [{ email: email.toLowerCase() }, { phone: formatPhoneNumber(email) }],
-      })
+      user = await User.findOne({ email: email.toLowerCase() })
       if (user) {
         foundUserType = "user"
       } else {
-        user = await Driver.findOne({
-      $or: [{ email: email.toLowerCase() }, { phone: formatPhoneNumber(email) }],
-    })
+        user = await Driver.findOne({ email: email.toLowerCase() })
         if (user) {
           foundUserType = "driver"
         }
@@ -633,23 +663,23 @@ router.post("/forgot-password", async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found with this email or phone number",
+        message: "User not found with this email address",
       })
     }
 
     // Generate OTP for password reset
     const otp = generateOTP()
     user.verificationCode = otp
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiry
     await user.save()
 
-    // Send OTP
-    await sendOTP(user.phone, otp)
+    await sendEmailOTP(user.email, otp, user.name)
 
     res.json({
       success: true,
-      message: "Password reset OTP sent to your phone number",
+      message: "Password reset OTP sent to your email address",
       data: {
-        phone: user.phone.replace(/(\+91)(\d{6})(\d{4})/, "$1******$3"),
+        email: user.email.replace(/(.{2})(.*)(@.*)/, "$1***$3"), // Mask email
         userType: foundUserType,
       },
     })
@@ -663,7 +693,7 @@ router.post("/forgot-password", async (req, res) => {
 })
 
 // @route   POST /api/auth/reset-password
-// @desc    Reset password with OTP
+// @desc    Reset password with email OTP
 // @access  Public
 router.post("/reset-password", async (req, res) => {
   try {
@@ -673,6 +703,13 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Please provide all required fields",
+      })
+    }
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address",
       })
     }
 
@@ -691,9 +728,7 @@ router.post("/reset-password", async (req, res) => {
     }
 
     const Model = userType === "user" ? User : Driver
-    const user = await Model.findOne({
-      $or: [{ email: email.toLowerCase() }, { phone: formatPhoneNumber(email) }],
-    })
+    const user = await Model.findOne({ email: email.toLowerCase() })
 
     if (!user) {
       return res.status(404).json({
@@ -709,6 +744,13 @@ router.post("/reset-password", async (req, res) => {
       })
     }
 
+    if (user.otpExpiry && new Date() > user.otpExpiry) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please request a new one.",
+      })
+    }
+
     // Hash new password
     const salt = await bcrypt.genSalt(10)
     const hashedPassword = await bcrypt.hash(newPassword, salt)
@@ -716,6 +758,7 @@ router.post("/reset-password", async (req, res) => {
     // Update password and clear OTP
     user.password = hashedPassword
     user.verificationCode = null
+    user.otpExpiry = null
     await user.save()
 
     res.json({
