@@ -46,22 +46,22 @@ const services = [
 async function seedServices() {
   try {
     if (!process.env.MONGO_URI) {
-      console.error("❌ MONGO_URI environment variable is not set!")
+      console.error("MONGO_URI environment variable is not set!")
       console.error("Please add MONGO_URI to your .env file")
       console.error("Example: MONGO_URI=mongodb://localhost:27017/vezoh")
       process.exit(1)
     }
 
-    console.log("🔄 Connecting to MongoDB...")
+    console.log("Connecting to MongoDB...")
     await mongoose.connect(process.env.MONGO_URI)
-    console.log("✅ Connected to MongoDB")
+    console.log("Connected to MongoDB")
 
     await Service.deleteMany({})
-    console.log("🗑️  Cleared existing services")
+    console.log("Cleared existing services")
 
     await Service.insertMany(services)
-    console.log("🎉 Services seeded successfully!")
-    console.log(`📊 Inserted ${services.length} services: ${services.map((s) => s.name).join(", ")}`)
+    console.log("Services seeded successfully!")
+    console.log(`Inserted ${services.length} services: ${services.map((s) => s.name).join(", ")}`)
 
     process.exit(0)
   } catch (error) {

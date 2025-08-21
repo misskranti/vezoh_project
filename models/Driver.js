@@ -66,7 +66,6 @@ const driverSchema = new mongoose.Schema(
       type: {
         type: String,
         enum: ["bike", "auto", "car", "truck"],
-        required: true,
       },
       make: String,
       model: String,
@@ -82,7 +81,6 @@ const driverSchema = new mongoose.Schema(
       {
         type: String,
         enum: ["ride", "delivery", "freight"],
-        required: true,
       },
     ],
     location: {
@@ -140,10 +138,8 @@ const driverSchema = new mongoose.Schema(
   },
 )
 
-driverSchema.index({ email: 1 })
-driverSchema.index({ phone: 1 })
 driverSchema.index({ "location.coordinates": "2dsphere" })
 driverSchema.index({ status: 1 })
 driverSchema.index({ services: 1 })
 
-module.exports = mongoose.model("Driver", driverSchema)
+module.exports = mongoose.models.Driver || mongoose.model("Driver", driverSchema)
