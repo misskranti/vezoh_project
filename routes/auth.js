@@ -72,7 +72,16 @@ const sendOTP = async (phone, otp) => {
 // Send OTP via email
 const sendEmailOTP = async (email, otp, name) => {
   try {
-    const transporter = nodemailer.createTransporter({
+    // Check if email credentials are configured
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.log(`[MOCK EMAIL] OTP ${otp} would be sent to ${email} (Email not configured)`)
+      return false
+    }
+
+    console.log(`[DEBUG] Attempting to send email to: ${email}`)
+    console.log(`[DEBUG] Using email user: ${process.env.EMAIL_USER}`)
+
+    const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.EMAIL_USER,
@@ -80,18 +89,36 @@ const sendEmailOTP = async (email, otp, name) => {
       },
     })
 
+    // Verify transporter configuration
+    await transporter.verify()
+    console.log("[DEBUG] Email transporter verified successfully")
+
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
-      subject: "Vezoh Password Reset OTP",
-      text: `Hello ${name},\n\nYour password reset OTP is: ${otp}. This code will expire in 10 minutes.\n\nThank you,\nVezoh Team`,
+      subject: "Vezoh Email Verification OTP",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Email Verification</h2>
+          <p>Hello ${name},</p>
+          <p>Your Vezoh email verification OTP is:</p>
+          <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 20px 0;">
+            <h1 style="color: #007bff; font-size: 32px; margin: 0;">${otp}</h1>
+          </div>
+          <p>This code will expire in 10 minutes.</p>
+          <p>If you didn't request this verification, please ignore this email.</p>
+          <p>Thank you,<br>Vezoh Team</p>
+        </div>
+      `,
+      text: `Hello ${name},\n\nYour Vezoh email verification OTP is: ${otp}\n\nThis code will expire in 10 minutes.\n\nThank you,\nVezoh Team`,
     }
 
-    await transporter.sendMail(mailOptions)
-    console.log(`Email sent successfully to ${email}`)
+    const info = await transporter.sendMail(mailOptions)
+    console.log(`[SUCCESS] Email sent successfully to ${email}. Message ID: ${info.messageId}`)
     return true
   } catch (error) {
-    console.error(`Failed to send email to ${email}:`, error.message)
+    console.error(`[ERROR] Failed to send email to ${email}:`, error.message)
+    console.log(`[FALLBACK] OTP for ${email}: ${otp}`)
     return false
   }
 }
@@ -168,15 +195,21 @@ router.post("/register/user", async (req, res) => {
 
     await user.save()
 
-    // Send OTP
-    await sendOTP(formattedPhone, otp)
+    // FIXED: Check if email was sent successfully
+    const emailSent = await sendEmailOTP(user.email, otp, user.name)
+    
+    if (!emailSent) {
+      console.log(`[WARNING] Email failed to send, but user created. OTP: ${otp}`)
+    }
 
     // Generate token
     const token = generateToken(user._id, "user")
 
     res.status(201).json({
       success: true,
-      message: "User registered successfully. Please verify your phone number.",
+      message: emailSent 
+        ? "User registered successfully. Please check your email for the verification code." 
+        : "User registered successfully. Please check server logs for the verification code.",
       data: {
         token,
         user: {
@@ -198,7 +231,7 @@ router.post("/register/user", async (req, res) => {
 })
 
 // @route   POST /api/auth/register/driver
-// @desc    Register a new driver (Step 1 of registration)
+// @desc    Register a new driver with email OTP verification
 // @access  Public
 router.post("/register/driver", async (req, res) => {
   try {
@@ -251,7 +284,7 @@ router.post("/register/driver", async (req, res) => {
     const salt = await bcrypt.genSalt(10)
     const hashedPassword = await bcrypt.hash(password, salt)
 
-    // Generate OTP
+    // Generate OTP for email verification
     const otp = generateOTP()
 
     const driver = new Driver({
@@ -260,19 +293,26 @@ router.post("/register/driver", async (req, res) => {
       phone: formattedPhone,
       password: hashedPassword,
       verificationCode: otp,
+      otpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes expiry
     })
 
     await driver.save()
 
-    // Send OTP
-    await sendOTP(formattedPhone, otp)
+    // FIXED: Check if email was sent successfully
+    const emailSent = await sendEmailOTP(driver.email, otp, driver.name)
+    
+    if (!emailSent) {
+      console.log(`[WARNING] Email failed to send, but driver created. OTP: ${otp}`)
+    }
 
     // Generate token
     const token = generateToken(driver._id, "driver")
 
     res.status(201).json({
       success: true,
-      message: "Driver registered successfully. Please verify your phone number.",
+      message: emailSent 
+        ? "Driver registered successfully. Please check your email for the verification code." 
+        : "Driver registered successfully. Please check server logs for the verification code.",
       data: {
         token,
         driver: {
@@ -300,14 +340,14 @@ router.post("/register/driver", async (req, res) => {
 // @route   POST /api/auth/verify-otp
 // @desc    Verify phone number with OTP (Step 2 of registration)
 // @access  Public
-router.post("/verify-otp", async (req, res) => {
+router.post("/verify-email-otp", async (req, res) => {
   try {
-    const { phone, otp, userType } = req.body
+    const { email, otp, userType } = req.body
 
-    if (!phone || !otp) {
+    if (!email || !otp) {
       return res.status(400).json({
         success: false,
-        message: "Please provide phone and OTP",
+        message: "Please provide email and OTP",
       })
     }
 
@@ -318,22 +358,21 @@ router.post("/verify-otp", async (req, res) => {
       })
     }
 
-    const formattedPhone = formatPhoneNumber(phone)
     let user = null
     let foundUserType = null
 
     if (userType) {
       // If userType is provided, check specific collection
       const Model = userType === "user" ? User : Driver
-      user = await Model.findOne({ phone: formattedPhone })
+      user = await Model.findOne({ email: email.toLowerCase() })
       foundUserType = userType
     } else {
       // If userType not provided, check both collections
-      user = await User.findOne({ phone: formattedPhone })
+      user = await User.findOne({ email: email.toLowerCase() })
       if (user) {
         foundUserType = "user"
       } else {
-        user = await Driver.findOne({ phone: formattedPhone })
+        user = await Driver.findOne({ email: email.toLowerCase() })
         if (user) {
           foundUserType = "driver"
         }
@@ -343,16 +382,23 @@ router.post("/verify-otp", async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found with this phone number",
+        message: "User not found with this email address",
       })
     }
 
     if (user.isVerified) {
       return res.status(400).json({
         success: false,
-        message: "Phone number is already verified",
+        message: "Email is already verified",
       })
     }
+
+    console.log("[DEBUG] OTP Verification:")
+    console.log("[DEBUG] Email:", email)
+    console.log("[DEBUG] Provided OTP:", otp)
+    console.log("[DEBUG] Stored OTP:", user.verificationCode)
+    console.log("[DEBUG] OTP Expiry:", user.otpExpiry)
+    console.log("[DEBUG] Current Time:", new Date())
 
     if (user.verificationCode !== otp) {
       return res.status(400).json({
@@ -361,16 +407,26 @@ router.post("/verify-otp", async (req, res) => {
       })
     }
 
+    if (user.otpExpiry && new Date() > user.otpExpiry) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please request a new one.",
+      })
+    }
+
     // Update user verification status
     user.isVerified = true
     user.verificationCode = null
+    user.otpExpiry = null
     await user.save()
 
     const token = generateToken(user._id, foundUserType)
 
+    console.log("[SUCCESS] Email verification successful for:", email)
+
     res.json({
       success: true,
-      message: "Phone number verified successfully",
+      message: "Email verified successfully",
       data: {
         token,
         isVerified: true,
@@ -385,25 +441,25 @@ router.post("/verify-otp", async (req, res) => {
       },
     })
   } catch (error) {
-    console.error("OTP verification error:", error)
+    console.error("Email OTP verification error:", error)
     res.status(500).json({
       success: false,
-      message: "Server error during OTP verification",
+      message: "Server error during email verification",
     })
   }
 })
 
-// @route   POST /api/auth/resend-otp
-// @desc    Resend OTP for phone verification
+// @route   POST /api/auth/resend-email-otp
+// @desc    Resend email OTP for registration
 // @access  Public
-router.post("/resend-otp", async (req, res) => {
+router.post("/resend-email-otp", async (req, res) => {
   try {
-    const { phone, userType } = req.body
+    const { email, userType } = req.body
 
-    if (!phone || !userType) {
+    if (!email || !userType) {
       return res.status(400).json({
         success: false,
-        message: "Please provide phone and user type",
+        message: "Please provide email and user type",
       })
     }
 
@@ -414,38 +470,40 @@ router.post("/resend-otp", async (req, res) => {
       })
     }
 
-    const formattedPhone = formatPhoneNumber(phone)
     const Model = userType === "user" ? User : Driver
-    const user = await Model.findOne({ phone: formattedPhone })
+    const user = await Model.findOne({ email: email.toLowerCase() })
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found with this phone number",
+        message: "User not found with this email address",
       })
     }
 
     if (user.isVerified) {
       return res.status(400).json({
         success: false,
-        message: "Phone number is already verified",
+        message: "Email is already verified",
       })
     }
 
     // Generate new OTP
     const otp = generateOTP()
     user.verificationCode = otp
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiry
     await user.save()
 
-    // Send OTP
-    await sendOTP(user.phone, otp)
+    // Send OTP via email
+    const emailSent = await sendEmailOTP(user.email, otp, user.name)
 
     res.json({
       success: true,
-      message: "OTP sent successfully",
+      message: emailSent 
+        ? "OTP sent successfully to your email" 
+        : "OTP generated. Please check server logs.",
     })
   } catch (error) {
-    console.error("Resend OTP error:", error)
+    console.error("Resend email OTP error:", error)
     res.status(500).json({
       success: false,
       message: "Server error while sending OTP",
@@ -458,7 +516,7 @@ router.post("/resend-otp", async (req, res) => {
 // ============================================================================
 
 // @route   POST /api/auth/login/user
-// @desc    User login
+// @desc    Login user
 // @access  Public
 router.post("/login/user", async (req, res) => {
   try {
@@ -530,7 +588,7 @@ router.post("/login/user", async (req, res) => {
 })
 
 // @route   POST /api/auth/login/driver
-// @desc    Driver login
+// @desc    Login driver (same format as user login)
 // @access  Public
 router.post("/login/driver", async (req, res) => {
   try {
@@ -565,6 +623,13 @@ router.post("/login/driver", async (req, res) => {
       })
     }
 
+    if (driver.status !== "active") {
+      return res.status(400).json({
+        success: false,
+        message: "Account is suspended. Please contact support.",
+      })
+    }
+
     // Generate token
     const token = generateToken(driver._id, "driver")
 
@@ -593,179 +658,8 @@ router.post("/login/driver", async (req, res) => {
   }
 })
 
-// ============================================================================
-// STEP 4: PASSWORD RECOVERY FLOW
-// ============================================================================
-
-// @route   POST /api/auth/forgot-password
-// @desc    Request password reset OTP (Step 1 of password recovery)
-// @access  Public
-router.post("/forgot-password", async (req, res) => {
-  try {
-    const { email, userType } = req.body
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide email address",
-      })
-    }
-
-    if (!isValidEmail(email)) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide a valid email address",
-      })
-    }
-
-    if (userType && !["user", "driver"].includes(userType)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user type. Must be 'user' or 'driver'",
-      })
-    }
-
-    let user = null
-    let foundUserType = null
-
-    if (userType) {
-      // If userType is provided, check specific collection
-      const Model = userType === "user" ? User : Driver
-      user = await Model.findOne({ email: email.toLowerCase() })
-      foundUserType = userType
-    } else {
-      // If userType not provided, check both collections
-      user = await User.findOne({ email: email.toLowerCase() })
-      if (user) {
-        foundUserType = "user"
-      } else {
-        user = await Driver.findOne({ email: email.toLowerCase() })
-        if (user) {
-          foundUserType = "driver"
-        }
-      }
-    }
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found with this email address",
-      })
-    }
-
-    // Generate OTP for password reset
-    const otp = generateOTP()
-    user.verificationCode = otp
-    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes expiry
-    await user.save()
-
-    await sendEmailOTP(user.email, otp, user.name)
-
-    res.json({
-      success: true,
-      message: "Password reset OTP sent to your email address",
-      data: {
-        email: user.email.replace(/(.{2})(.*)(@.*)/, "$1***$3"), // Mask email
-        userType: foundUserType,
-      },
-    })
-  } catch (error) {
-    console.error("Forgot password error:", error)
-    res.status(500).json({
-      success: false,
-      message: "Server error while processing request",
-    })
-  }
-})
-
-// @route   POST /api/auth/reset-password
-// @desc    Reset password with OTP (Step 2 of password recovery)
-// @access  Public
-router.post("/reset-password", async (req, res) => {
-  try {
-    const { email, otp, newPassword, userType } = req.body
-
-    if (!email || !otp || !newPassword || !userType) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide all required fields",
-      })
-    }
-
-    if (!isValidEmail(email)) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide a valid email address",
-      })
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: "Password must be at least 6 characters long",
-      })
-    }
-
-    if (!["user", "driver"].includes(userType)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user type",
-      })
-    }
-
-    const Model = userType === "user" ? User : Driver
-    const user = await Model.findOne({ email: email.toLowerCase() })
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      })
-    }
-
-    if (user.verificationCode !== otp) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP",
-      })
-    }
-
-    if (user.otpExpiry && new Date() > user.otpExpiry) {
-      return res.status(400).json({
-        success: false,
-        message: "OTP has expired. Please request a new one.",
-      })
-    }
-
-    // Hash new password
-    const salt = await bcrypt.genSalt(10)
-    const hashedPassword = await bcrypt.hash(newPassword, salt)
-
-    // Update password and clear OTP
-    user.password = hashedPassword
-    user.verificationCode = null
-    user.otpExpiry = null
-    await user.save()
-
-    res.json({
-      success: true,
-      message: "Password reset successfully",
-    })
-  } catch (error) {
-    console.error("Reset password error:", error)
-    res.status(500).json({
-      success: false,
-      message: "Server error while resetting password",
-    })
-  }
-})
-
-// ============================================================================
-// STEP 5: AUTHENTICATED USER OPERATIONS
-// ============================================================================
-
 // @route   GET /api/auth/me
-// @desc    Get current user info
+// @desc    Get current user/driver info
 // @access  Private
 router.get("/me", auth, async (req, res) => {
   try {
@@ -795,72 +689,12 @@ router.get("/me", auth, async (req, res) => {
   }
 })
 
-// @route   POST /api/auth/change-password
-// @desc    Change password for authenticated user
-// @access  Private
-router.post("/change-password", auth, async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide current and new password",
-      })
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: "New password must be at least 6 characters long",
-      })
-    }
-
-    const Model = req.userType === "user" ? User : Driver
-    const user = await Model.findById(req.user._id)
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      })
-    }
-
-    // Check current password
-    const isMatch = await bcrypt.compare(currentPassword, user.password)
-    if (!isMatch) {
-      return res.status(400).json({
-        success: false,
-        message: "Current password is incorrect",
-      })
-    }
-
-    // Hash new password
-    const salt = await bcrypt.genSalt(10)
-    const hashedPassword = await bcrypt.hash(newPassword, salt)
-
-    // Update password
-    user.password = hashedPassword
-    await user.save()
-
-    res.json({
-      success: true,
-      message: "Password changed successfully",
-    })
-  } catch (error) {
-    console.error("Change password error:", error)
-    res.status(500).json({
-      success: false,
-      message: "Server error while changing password",
-    })
-  }
-})
-
 // @route   POST /api/auth/logout
-// @desc    Logout user
+// @desc    Logout user (client-side token removal)
 // @access  Private
 router.post("/logout", auth, async (req, res) => {
   try {
+
     res.json({
       success: true,
       message: "Logged out successfully",
