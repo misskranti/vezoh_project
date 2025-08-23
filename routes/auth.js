@@ -36,8 +36,8 @@ const initializeTwilio = () => {
 }
 
 // Generate JWT Token
-const generateToken = (id, userType) => {
-  return jwt.sign({ id, userType }, process.env.JWT_SECRET, {
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: "30d",
   })
 }
@@ -210,16 +210,10 @@ router.post("/register/user", async (req, res) => {
       message: emailSent 
         ? "User registered successfully. Please check your email for the verification code." 
         : "User registered successfully. Please check server logs for the verification code.",
-      data: {
-        token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          isVerified: user.isVerified,
-        },
-      },
+           id: user._id,
+           role: "user",
+           token : token,
+    
     })
   } catch (error) {
     console.error("User registration error:", error)
@@ -342,7 +336,7 @@ router.post("/register/driver", async (req, res) => {
 // @access  Public
 router.post("/verify-email-otp", async (req, res) => {
   try {
-    const { email, otp, userType } = req.body
+    const { email, otp, role } = req.body
 
     if (!email || !otp) {
       return res.status(400).json({
@@ -351,7 +345,7 @@ router.post("/verify-email-otp", async (req, res) => {
       })
     }
 
-    if (userType && !["user", "driver"].includes(userType)) {
+    if (role && !["user", "driver"].includes(role)) {
       return res.status(400).json({
         success: false,
         message: "Invalid user type. Must be 'user' or 'driver'",
@@ -361,13 +355,13 @@ router.post("/verify-email-otp", async (req, res) => {
     let user = null
     let foundUserType = null
 
-    if (userType) {
-      // If userType is provided, check specific collection
-      const Model = userType === "user" ? User : Driver
+    if (role) {
+      // If role is provided, check specific collection
+      const Model = role === "user" ? User : Driver
       user = await Model.findOne({ email: email.toLowerCase() })
-      foundUserType = userType
+      foundUserType = role
     } else {
-      // If userType not provided, check both collections
+      // If role not provided, check both collections
       user = await User.findOne({ email: email.toLowerCase() })
       if (user) {
         foundUserType = "user"
@@ -427,18 +421,24 @@ router.post("/verify-email-otp", async (req, res) => {
     res.json({
       success: true,
       message: "Email verified successfully",
-      data: {
-        token,
-        isVerified: true,
-        userType: foundUserType,
-        [foundUserType]: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          isVerified: user.isVerified,
-        },
-      },
+      id: user._id,
+       role: foundUserType,
+      isVerified: true,
+     
+      token: token
+
+      // data: {
+      //   token,
+      //   isVerified: true,
+      //   role: foundUserType,
+      //   [foundUserType]: {
+      //     id: user._id,
+      //     name: user.name,
+      //     email: user.email,
+      //     phone: user.phone,
+      //     isVerified: user.isVerified,
+      //   },
+      // },
     })
   } catch (error) {
     console.error("Email OTP verification error:", error)
@@ -454,23 +454,23 @@ router.post("/verify-email-otp", async (req, res) => {
 // @access  Public
 router.post("/resend-email-otp", async (req, res) => {
   try {
-    const { email, userType } = req.body
+    const { email, role } = req.body
 
-    if (!email || !userType) {
+    if (!email || !role) {
       return res.status(400).json({
         success: false,
         message: "Please provide email and user type",
       })
     }
 
-    if (!["user", "driver"].includes(userType)) {
+    if (!["user", "driver"].includes(role)) {
       return res.status(400).json({
         success: false,
         message: "Invalid user type. Must be 'user' or 'driver'",
       })
     }
 
-    const Model = userType === "user" ? User : Driver
+    const Model = role === "user" ? User : Driver
     const user = await Model.findOne({ email: email.toLowerCase() })
 
     if (!user) {
@@ -565,18 +565,21 @@ router.post("/login/user", async (req, res) => {
     res.json({
       success: true,
       message: "Login successful",
-      data: {
-        token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          isVerified: user.isVerified,
-          profileImage: user.profileImage,
-          rating: user.rating,
-        },
-      },
+      id: user._id,
+      role: "user",
+      token : token
+      //data: {
+       // token,
+        //user: {
+         // id: user._id,
+        //   name: user.name,
+        //   email: user.email,
+        //   phone: user.phone,
+        //   isVerified: user.isVerified,
+        //   profileImage: user.profileImage,
+        //   rating: user.rating,
+        // },
+     // },
     })
   } catch (error) {
     console.error("User login error:", error)
@@ -663,7 +666,7 @@ router.post("/login/driver", async (req, res) => {
 // @access  Private
 router.get("/me", auth, async (req, res) => {
   try {
-    const Model = req.userType === "user" ? User : Driver
+    const Model = req.role === "user" ? User : Driver
     const user = await Model.findById(req.user._id).select("-password -verificationCode")
 
     if (!user) {
@@ -676,8 +679,8 @@ router.get("/me", auth, async (req, res) => {
     res.json({
       success: true,
       data: {
-        [req.userType]: user,
-        userType: req.userType,
+        [req.role]: user,
+        role: req.role,
       },
     })
   } catch (error) {
