@@ -307,16 +307,19 @@ router.post("/register/driver", async (req, res) => {
       message: emailSent 
         ? "Driver registered successfully. Please check your email for the verification code." 
         : "Driver registered successfully. Please check server logs for the verification code.",
-      data: {
-        token,
-        driver: {
-          id: driver._id,
-          name: driver.name,
-          email: driver.email,
-          phone: driver.phone,
-          isVerified: driver.isVerified,
-        },
-      },
+         id: driver._id,
+         role:"driver",
+         token: token,
+      // data: {
+      //   token,
+      //   // driver: {
+      //   //  // id: driver._id,
+      //   //   name: driver.name,
+      //   //   email: driver.email,
+      //   //   phone: driver.phone,
+      //   //   isVerified: driver.isVerified,
+      //   // },
+      // },
     })
   } catch (error) {
     console.error("Driver registration error:", error)
@@ -626,12 +629,12 @@ router.post("/login/driver", async (req, res) => {
       })
     }
 
-    if (driver.status !== "active") {
-      return res.status(400).json({
-        success: false,
-        message: "Account is suspended. Please contact support.",
-      })
-    }
+    // if (driver.status !== "active") {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Account is suspended. Please contact support.",
+    //   })
+    // }
 
     // Generate token
     const token = generateToken(driver._id, "driver")
@@ -639,18 +642,21 @@ router.post("/login/driver", async (req, res) => {
     res.json({
       success: true,
       message: "Login successful",
-      data: {
-        token,
-        driver: {
-          id: driver._id,
-          name: driver.name,
-          email: driver.email,
-          phone: driver.phone,
-          isVerified: driver.isVerified,
-          profileImage: driver.profileImage,
-          rating: driver.rating,
-        },
-      },
+      id: driver._id,
+      role: "driver",
+      token: token,
+      // data: {
+      //   token,
+      //   driver: {
+      //     id: driver._id,
+      //     name: driver.name,
+      //     email: driver.email,
+      //     phone: driver.phone,
+      //     isVerified: driver.isVerified,
+      //     profileImage: driver.profileImage,
+      //     rating: driver.rating,
+      //   },
+      // },
     })
   } catch (error) {
     console.error("Driver login error:", error)
