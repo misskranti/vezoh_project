@@ -1,14 +1,11 @@
 const nodemailer = require("nodemailer")
 
-// Create email transporter
 const createTransporter = () => {
-  // For development, you can use Gmail or any SMTP service
-  // In production, use services like SendGrid, AWS SES, etc.
   return nodemailer.createTransporter({
-    service: "gmail", // or your preferred email service
+    service: "gmail",
     auth: {
-      user: process.env.EMAIL_USER, // Your email
-      pass: process.env.EMAIL_PASS, // Your email password or app password
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
     },
   })
 }
@@ -22,7 +19,7 @@ const sendEmailOTP = async (email, otp, userName = "User") => {
       )
       console.log(`[MOCK EMAIL] OTP ${otp} would be sent to ${email}`)
       console.log(`[SETUP REQUIRED] Please add EMAIL_USER and EMAIL_PASS to your .env file`)
-      return false // Return false to indicate email wasn't sent
+      return false
     }
 
     const transporter = createTransporter()
@@ -59,7 +56,6 @@ const sendEmailOTP = async (email, otp, userName = "User") => {
     } else if (error.code === "ECONNECTION") {
       console.error("[EMAIL ERROR] Connection failed. Check your internet connection and email service settings.")
     }
-    // Log OTP for development purposes
     console.log(`[FALLBACK] OTP for ${email}: ${otp}`)
     return false
   }

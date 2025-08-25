@@ -34,7 +34,7 @@ const auth = async (req, res, next) => {
     console.log("[v0] Decoded token:", decoded)
 
     // Check if it's a user or driver token
-    if (decoded.userType === "user") {
+    if (decoded.role === "user") {
       const user = await User.findById(decoded.id).select("-password")
       if (!user) {
         return res.status(401).json({
@@ -43,8 +43,8 @@ const auth = async (req, res, next) => {
         })
       }
       req.user = user
-      req.userType = "user"
-    } else if (decoded.userType === "driver") {
+      req.role = "user"
+    } else if (decoded.role === "driver") {
       const driver = await Driver.findById(decoded.id).select("-password")
       if (!driver) {
         return res.status(401).json({
@@ -53,7 +53,7 @@ const auth = async (req, res, next) => {
         })
       }
       req.user = driver
-      req.userType = "driver"
+      req.role = "driver"
     } else {
       return res.status(401).json({
         success: false,
@@ -110,7 +110,7 @@ const driverAuth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
 
-    if (decoded.userType !== "driver") {
+    if (decoded.role !== "driver") {
       return res.status(403).json({
         success: false,
         message: "Access denied. Driver token required.",
@@ -126,7 +126,7 @@ const driverAuth = async (req, res, next) => {
     }
 
     req.user = driver
-    req.userType = "driver"
+    req.role = "driver"
     next()
   } catch (error) {
     console.error("Driver auth middleware error:", error)
@@ -171,7 +171,7 @@ const userAuth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
 
-    if (decoded.userType !== "user") {
+    if (decoded.role !== "user") {
       return res.status(403).json({
         success: false,
         message: "Access denied. User token required.",
@@ -187,7 +187,7 @@ const userAuth = async (req, res, next) => {
     }
 
     req.user = user
-    req.userType = "user"
+    req.role = "user"
     next()
   } catch (error) {
     console.error("User auth middleware error:", error)

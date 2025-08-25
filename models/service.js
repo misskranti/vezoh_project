@@ -82,7 +82,6 @@ const serviceSchema = new mongoose.Schema(
   },
 )
 
-// serviceSchema.index({ serviceId: 1 }) // Removed duplicate index
 serviceSchema.index({ active: 1 })
 serviceSchema.index({ sortOrder: 1 })
 
