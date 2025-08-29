@@ -18,11 +18,6 @@ const driverSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
-    password: {
-      type: String,
-      required: true,
-      minlength: 6,
-    },
     profileImage: {
       type: String,
       default: null,
@@ -83,24 +78,34 @@ const driverSchema = new mongoose.Schema(
         enum: ["ride", "delivery", "freight"],
       },
     ],
+
+    // ✅ Proper GeoJSON location
     location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
       coordinates: {
-        latitude: { type: Number, default: 0 },
-        longitude: { type: Number, default: 0 },
+        type: [Number], // [longitude, latitude]
+        index: "2dsphere",
+        default: [0, 0],
       },
       address: String,
       lastUpdated: { type: Date, default: Date.now },
     },
+
     status: {
       type: String,
       enum: ["online", "offline", "busy", "inactive"],
       default: "offline",
     },
+
     availability: {
       isAvailable: { type: Boolean, default: true },
       workingHours: {
-        start: String, // "09:00"
-        end: String, // "22:00"
+        start: String, // e.g. "09:00"
+        end: String,   // e.g. "22:00"
       },
     },
     earnings: {
@@ -133,12 +138,10 @@ const driverSchema = new mongoose.Schema(
       default: "pending",
     },
   },
-  {
-    timestamps: true,
-  },
+  { timestamps: true },
 )
 
-driverSchema.index({ "location.coordinates": "2dsphere" })
+// ✅ Useful indexes
 driverSchema.index({ status: 1 })
 driverSchema.index({ services: 1 })
 

@@ -18,11 +18,6 @@ const userSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
-    password: {
-      type: String,
-      required: true,
-      minlength: 6,
-    },
     profileImage: {
       type: String,
       default: null,
@@ -93,8 +88,6 @@ const userSchema = new mongoose.Schema(
   },
 )
 
-userSchema.index({ email: 1 })
-userSchema.index({ phone: 1 })
 userSchema.index({ "addresses.coordinates": "2dsphere" })
 
 module.exports = mongoose.model("User", userSchema)
