@@ -100,6 +100,5 @@ const sendPasswordResetOTP = async (email, otp, userName = "User") => {
 
 module.exports = {
   sendEmailVerificationOTP,
-  sendPasswordResetOTP,
-  sendEmailOTP: sendPasswordResetOTP,
+  sendPasswordResetOTP
 }

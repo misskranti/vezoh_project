@@ -18,7 +18,7 @@ mongoose
   .catch((err) => console.log("MongoDB connection error:", err))
 
 app.use("/api/auth", require("./routes/auth"))
-
+//app.use("/api/dashboard", require("./routes/dashboard"))
 
 app.use((err, req, res, next) => {
   console.error(err.stack)
@@ -28,7 +28,6 @@ app.use((err, req, res, next) => {
     error: process.env.NODE_ENV === "development" ? err.message : "Internal server error",
   })
 })
-
 
 const PORT = process.env.PORT || 5000
 server.listen(PORT, () => {
