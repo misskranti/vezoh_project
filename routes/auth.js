@@ -66,7 +66,6 @@ router.post("/register/user", async (req, res) => {
 
     const formattedPhone = formatPhoneNumber(phone)
 
-    // Check if user already exists
     const existingUser = await User.findOne({
       $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }],
     })
@@ -78,7 +77,6 @@ router.post("/register/user", async (req, res) => {
       })
     }
 
-    // Generate OTP
     const otp = generateOTP()
 
     const user = new User({
@@ -91,22 +89,27 @@ router.post("/register/user", async (req, res) => {
     await user.save()
 
     const emailSent = await sendEmailVerificationOTP(user.email, otp, user.name)
-    
+
     if (!emailSent) {
       console.log(`[WARNING] Email failed to send, but user created. OTP: ${otp}`)
     }
 
-    // Generate token
+   
     const token = generateToken(user._id, "user")
+
 
     res.status(201).json({
       success: true,
-      message: emailSent 
-        ? "User registered successfully. Please check your email for the verification code." 
+      message: emailSent
+        ? "User registered successfully. Please check your email for the verification code."
         : "User registered successfully. Please check server logs for the verification code.",
-      id: user._id,
-      token: token,
-    })
+      data: {
+        id: user._id.toString(), 
+        token: token,
+      },
+    });
+
+
   } catch (error) {
     console.error("User registration error:", error)
     res.status(500).json({
@@ -170,7 +173,7 @@ router.post("/register/driver", async (req, res) => {
     await driver.save()
 
     const emailSent = await sendEmailVerificationOTP(driver.email, otp, driver.name)
-    
+
     if (!emailSent) {
       console.log(`[WARNING] Email failed to send, but driver created. OTP: ${otp}`)
     }
@@ -178,14 +181,26 @@ router.post("/register/driver", async (req, res) => {
     // Generate token
     const token = generateToken(driver._id, "driver")
 
+    // res.status(201).json({
+    //   success: true,
+    //   message: emailSent
+    //     ? "Driver registered successfully. Please check your email for the verification code."
+    //     : "Driver registered successfully. Please check server logs for the verification code.",
+    //   id: driver._id,
+    //   token: token,
+    // })
+
     res.status(201).json({
       success: true,
-      message: emailSent 
-        ? "Driver registered successfully. Please check your email for the verification code." 
+      message: emailSent
+        ? "Driver registered successfully. Please check your email for the verification code."
         : "Driver registered successfully. Please check server logs for the verification code.",
-      id: driver._id,
-      token: token,
-    })
+      data: {
+        id: driver._id.toString(), // ensures it's returned as a string
+        token: token,
+      },
+    });
+
   } catch (error) {
     console.error("Driver registration error:", error)
     res.status(500).json({
@@ -239,7 +254,7 @@ router.post("/verify-email-otp", auth, async (req, res) => {
     console.log("[DEBUG] OTP Expiry:", user.otpExpiry)
     console.log("[DEBUG] Current Time:", new Date())
 
-    // ❌ Invalid OTP
+
     if (user.verificationCode !== otp) {
       return res.status(400).json({
         success: false,
@@ -247,7 +262,7 @@ router.post("/verify-email-otp", auth, async (req, res) => {
       })
     }
 
-    // ⏳ OTP Expired
+
     if (user.otpExpiry && new Date() > user.otpExpiry) {
       return res.status(400).json({
         success: false,
@@ -255,7 +270,7 @@ router.post("/verify-email-otp", auth, async (req, res) => {
       })
     }
 
-    // ✅ OTP Valid → Verify user
+
     user.isVerified = true
     user.verificationCode = null
     user.otpExpiry = null
@@ -268,10 +283,14 @@ router.post("/verify-email-otp", auth, async (req, res) => {
     res.json({
       success: true,
       message: "Email verified successfully",
-      id: user._id,
-      isVerified: true,
-      token: token
-    })
+      data: {
+        id: user._id.toString(),
+        isVerified: true,
+        token: token,
+      },
+    });
+
+
   } catch (error) {
     console.error("Email OTP verification error:", error)
     res.status(500).json({
@@ -364,12 +383,22 @@ router.post("/login/user", async (req, res) => {
 
     const token = generateToken(user._id, "user")
 
+    // res.json({
+    //   success: true,
+    //   message: "Login successful",
+    //   id: user._id,
+    //   token: token
+    // })
+
     res.json({
       success: true,
       message: "Login successful",
-      id: user._id,
-      token : token
-    })
+      data: {
+        id: user._id.toString(),
+        token: token,
+      },
+    });
+
   } catch (error) {
     console.error("User login error:", error)
     res.status(500).json({
@@ -407,17 +436,26 @@ router.post("/login/driver", async (req, res) => {
       })
     }
 
- 
+
 
     const token = generateToken(driver._id, "driver")
 
+    // res.json({
+    //   success: true,
+    //   message: "Login successful",
+    //   id: driver._id,
+    //   role: "driver",
+    //   token: token,
+    // })
     res.json({
       success: true,
       message: "Login successful",
-      id: driver._id,
-      role: "driver",
-      token: token,
-    })
+      data: {
+        id: driver._id.toString(),
+        token: token,
+      },
+    });
+
   } catch (error) {
     console.error("Driver login error:", error)
     res.status(500).json({
@@ -443,7 +481,7 @@ router.get("/profile", auth, async (req, res) => {
       success: true,
       data: {
         [req.role]: user,
-       // role: req.role,
+        // role: req.role,
       },
     })
   } catch (error) {
