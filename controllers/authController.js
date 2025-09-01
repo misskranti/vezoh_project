@@ -108,7 +108,7 @@ exports.verifyEmailOtp = async (req, res) => {
     await user.save()
 
     const token = generateToken(user._id, role)
-    res.json({ success: true, message: "Email verified successfully", data: { id: user._id.toString(), isVerified: true, token: token } })
+    res.json({ success: true, message: "Email verified successfully"})
   } catch {
     res.status(500).json({ success: false, message: "Server error during email verification" })
   }
