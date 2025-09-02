@@ -59,33 +59,196 @@ exports.registerUser = async (req, res) => {
 }
 
 // Register Driver
-exports.registerDriver = async (req, res) => {
+exports.registerDriverComplete = async (req, res) => {
   try {
-    const { name, email, phone } = req.body
-    if (!name || !email || !phone) return res.status(400).json({ success: false, message: "Please provide all required fields" })
-    if (!isValidEmail(email)) return res.status(400).json({ success: false, message: "Please provide a valid email address" })
-    if (!isValidPhone(phone)) return res.status(400).json({ success: false, message: "Please provide a valid phone number" })
+    const {
+      name,
+      email,
+      phone,
+      services,
+      vehicleType,
+      vehicleNumber,
+      ownerName
+    } = req.body;
+
+    if (!name || !email || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide all required fields (name, email, phone)"
+      });
+    }
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address"
+      });
+    }
+
+    if (!isValidPhone(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid phone number"
+      });
+    }
 
     const formattedPhone = formatPhoneNumber(phone)
-    const existingDriver = await Driver.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] })
-    if (existingDriver) return res.status(400).json({ success: false, message: "Driver already exists with this email or phone number" })
+    const existingDriver = await Driver.findOne({
+      $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }]
+    })
 
-    const otp = generateOTP()
-    const driver = new Driver({ name: name.trim(), email: email.toLowerCase(), phone: formattedPhone, verificationCode: otp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) })
-    await driver.save()
+    if (existingDriver) {
+      return res.status(400).json({
+        success: false,
+        message: "Driver already exists with this email or phone number"
+      })
+    }
 
-    await sendEmailVerificationOTP(driver.email, otp, driver.name)
+    let parsedServices;
+    try {
+      parsedServices = typeof services === 'string' ? JSON.parse(services) : services;
+      if (!Array.isArray(parsedServices) || parsedServices.length === 0) {
+        throw new Error('Services must be a non-empty array');
+      }
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select at least one service'
+      });
+    }
 
-    const token = generateToken(driver._id, "driver")
+    if (!vehicleType || !vehicleNumber || !ownerName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide vehicle type, vehicle number, and owner name'
+      });
+    }
+
+    const existingVehicle = await Driver.findOne({
+      'vehicle.number': vehicleNumber.toUpperCase()
+    });
+
+    if (existingVehicle) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vehicle with this number is already registered'
+      });
+    }
+
+    const requiredFiles = [
+      'drivingLicense',
+      'rcCertificate',
+      'vehicleInsurance'
+    ];
+
+    const missingFiles = requiredFiles.filter(field => !req.files?.[field]);
+
+    if (missingFiles.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload all required documents',
+        missingFiles: missingFiles.map(file => {
+          switch (file) {
+            case 'drivingLicense': return 'Driving License';
+            case 'rcCertificate': return 'RC Registration Certificate';
+            case 'vehicleInsurance': return 'Vehicle Insurance';
+            default: return file;
+          }
+        })
+      });
+    }
+
+    const otp = generateOTP();
+
+    const driverData = {
+      name: name.trim(),
+      email: email.toLowerCase(),
+      phone: formattedPhone,
+      verificationCode: otp,
+      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
+      services: parsedServices,
+      vehicle: {
+        type: vehicleType.toLowerCase(),
+        number: vehicleNumber.toUpperCase(),
+        ownerName: ownerName.trim()
+      },
+
+      documents: {
+        drivingLicense: {
+          image: req.files.drivingLicense[0].path,
+          isVerified: false
+        },
+        rcCertificate: {
+          image: req.files.rcCertificate[0].path,
+          isVerified: false
+        },
+        vehicleInsurance: {
+          image: req.files.vehicleInsurance[0].path,
+          isVerified: false
+        }
+      },
+
+
+      verificationStatus: 'pending',
+      registrationStep: 'completed',
+      isEmailVerified: false,
+      isApproved: false
+    };
+
+
+    const driver = new Driver(driverData);
+    await driver.save();
+
+
+    await sendEmailVerificationOTP(driver.email, otp, driver.name);
+
+
+    const token = jwt.sign(
+      { id: driver._id, role: "driver" },
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" }
+    )
+
+
     res.status(201).json({
       success: true,
       message: "Driver registered successfully. Please check your email for the verification code.",
-      data: { id: driver._id.toString(), token: token },
-    })
-  } catch {
-    res.status(500).json({ success: false, message: "Server error during registration" })
+      data: {
+        id: driver._id.toString(),
+        token: token
+
+      }
+    });
+
+  } catch (error) {
+    console.error('Driver registration error:', error);
+
+
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`
+      });
+    }
+
+
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Registration failed. Please try again."
+    });
   }
 }
+
 
 // Verify Email OTP
 exports.verifyEmailOtp = async (req, res) => {
@@ -108,7 +271,7 @@ exports.verifyEmailOtp = async (req, res) => {
     await user.save()
 
     const token = generateToken(user._id, role)
-    res.json({ success: true, message: "Email verified successfully"})
+    res.json({ success: true, message: "Email verified successfully" })
   } catch {
     res.status(500).json({ success: false, message: "Server error during email verification" })
   }
@@ -190,5 +353,19 @@ exports.logout = async (req, res) => {
     res.json({ success: true, message: "Logged out successfully" })
   } catch {
     res.status(500).json({ success: false, message: "Server error during logout" })
+  }
+}
+
+
+const getNextStep = (registrationStep, verificationStatus) => {
+  if (verificationStatus === 'approved') return 'registration_complete';
+  if (verificationStatus === 'rejected') return 'resubmit_application';
+  if (verificationStatus === 'under_review') return 'wait_for_approval';
+
+  switch (registrationStep) {
+    case 'basic_info': return 'submit_for_verification';
+    case 'service_selection': return 'submit_for_verification';
+    case 'completed': return 'wait_for_approval';
+    default: return 'submit_for_verification';
   }
 }

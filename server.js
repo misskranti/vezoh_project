@@ -1,8 +1,17 @@
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') }); 
+
+
+
+
 const express = require("express")
+
 const mongoose = require("mongoose")
 const cors = require("cors")
 const http = require("http")
 
+
+const authRoutes = require('./routes/auth');
 require("dotenv").config()
 
 const app = express()
@@ -18,6 +27,7 @@ mongoose
   .catch((err) => console.log("MongoDB connection error:", err))
 
 app.use("/api/auth", require("./routes/auth"))
+app.use('/api', authRoutes); 
 //app.use("/api/dashboard", require("./routes/dashboard"))
 
 app.use((err, req, res, next) => {
