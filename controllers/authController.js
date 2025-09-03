@@ -39,7 +39,7 @@ exports.registerUser = async (req, res) => {
 
     const formattedPhone = formatPhoneNumber(phone)
     const existingUser = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] })
-    const existingDriver = await Driver.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] })
+   // const existingDriver = await Driver.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] })
 
     if (existingUser) {
       return res.status(400).json({
@@ -48,12 +48,12 @@ exports.registerUser = async (req, res) => {
       })
     }
 
-    if (existingDriver) {
-      return res.status(400).json({
-        success: false,
-        message: "This email or phone number is already registered in the Vezoh Driver app."
-})
-    }
+//     if (existingDriver) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "This email or phone number is already registered in the Vezoh Driver app."
+// })
+//     }
 
     const otp = generateOTP()
     const user = new User({ name: name.trim(), email: email.toLowerCase(), phone: formattedPhone, verificationCode: otp })
@@ -110,9 +110,9 @@ exports.registerDriverComplete = async (req, res) => {
     const existingDriver = await Driver.findOne({
       $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }]
     })
-    const existingUser = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }]
-    })
+    // const existingUser = await User.findOne({
+    //   $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }]
+    // })
 
     if (existingDriver) {
       return res.status(400).json({
@@ -121,12 +121,12 @@ exports.registerDriverComplete = async (req, res) => {
       })
     }
 
-      if ( existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "This email or phone number is already registered in the Vezoh User app"
-      })
-    }
+    //   if ( existingUser) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "This email or phone number is already registered in the Vezoh User app"
+    //   })
+    // }
 
 
     let parsedServices;
