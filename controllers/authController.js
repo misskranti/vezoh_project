@@ -39,7 +39,21 @@ exports.registerUser = async (req, res) => {
 
     const formattedPhone = formatPhoneNumber(phone)
     const existingUser = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] })
-    if (existingUser) return res.status(400).json({ success: false, message: "User already exists with this email or phone number" })
+    const existingDriver = await Driver.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] })
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists with this email or phone number."
+      })
+    }
+
+    if (existingDriver) {
+      return res.status(400).json({
+        success: false,
+        message: "This email or phone number is already registered in the Vezoh Driver app."
+})
+    }
 
     const otp = generateOTP()
     const user = new User({ name: name.trim(), email: email.toLowerCase(), phone: formattedPhone, verificationCode: otp })
@@ -96,6 +110,9 @@ exports.registerDriverComplete = async (req, res) => {
     const existingDriver = await Driver.findOne({
       $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }]
     })
+    const existingUser = await User.findOne({
+      $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }]
+    })
 
     if (existingDriver) {
       return res.status(400).json({
@@ -103,6 +120,14 @@ exports.registerDriverComplete = async (req, res) => {
         message: "Driver already exists with this email or phone number"
       })
     }
+
+      if ( existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "This email or phone number is already registered in the Vezoh User app"
+      })
+    }
+
 
     let parsedServices;
     try {
