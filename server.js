@@ -28,8 +28,9 @@ mongoose
   .catch((err) => console.log("MongoDB connection error:", err))
 
 app.use("/api/auth", require("./routes/auth"))
-app.use('/api', authRoutes); 
+// app.use('/api', authRoutes); // this is already used in the above line and in this line you forgot to add ---> /api/auth (Nishant)
 app.use("/api/dashboard", require("./routes/dashboard"))
+app.use("/api", require("./routes/services.js"))
 
 app.use((err, req, res, next) => {
   console.error(err.stack)
