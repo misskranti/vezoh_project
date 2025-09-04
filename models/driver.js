@@ -32,7 +32,6 @@ const driverSchema = new mongoose.Schema(
     },
      otpExpiry: { type: Date, default: null },
 
-    // Login OTP fields for drivers
     loginVerificationCode: { type: String, default: null },
     loginOtpExpiry: { type: Date, default: null },
     loginOtpVerified: { type: Boolean, default: false },
@@ -76,7 +75,7 @@ const driverSchema = new mongoose.Schema(
       plateNumber: String,
       capacity: {
         passengers: Number,
-        weight: Number, // in kg
+        weight: Number,
       },
     },
     services: [
@@ -101,8 +100,8 @@ const driverSchema = new mongoose.Schema(
     availability: {
       isAvailable: { type: Boolean, default: true },
       workingHours: {
-        start: String, // "09:00"
-        end: String,   // "22:00"
+        start: String, 
+        end: String,  
       },
     },
     earnings: {
@@ -116,8 +115,8 @@ const driverSchema = new mongoose.Schema(
       totalTrips: { type: Number, default: 0 },
       completedTrips: { type: Number, default: 0 },
       cancelledTrips: { type: Number, default: 0 },
-      totalDistance: { type: Number, default: 0 }, // in km
-      totalTime: { type: Number, default: 0 }, // in minutes
+      totalDistance: { type: Number, default: 0 }, 
+      totalTime: { type: Number, default: 0 },
     },
     rating: {
       average: { type: Number, default: 5.0 },

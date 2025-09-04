@@ -9,6 +9,7 @@ const generateToken = (id, role) => {
 };
 
 // ---------------------- REGISTER USER ----------------------
+
 exports.registerUser = async (req, res) => {
   try {
     const { name, email, phone } = req.body;
@@ -19,7 +20,6 @@ exports.registerUser = async (req, res) => {
 
     const formattedPhone = formatPhoneNumber(phone);
 
-    // Check if user already exists
     const existingUser = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] });
     if (existingUser)
       return res.status(400).json({ success: false, message: "User already exists with this email or phone number." });
@@ -30,13 +30,12 @@ exports.registerUser = async (req, res) => {
       email: email.toLowerCase(),
       phone: formattedPhone,
       verificationCode: otp,
-      otpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
       isVerified: false,
     });
 
     await user.save();
 
-    // ✅ Send OTP only once here
     await sendEmailVerificationOTP(user.email, otp, user.name);
 
     res.status(201).json({
@@ -51,6 +50,7 @@ exports.registerUser = async (req, res) => {
 };
 
 // ---------------------- REGISTER DRIVER ----------------------
+
 exports.registerDriver = async (req, res) => {
   try {
     const { name, email, phone } = req.body;
@@ -61,7 +61,6 @@ exports.registerDriver = async (req, res) => {
 
     const formattedPhone = formatPhoneNumber(phone);
 
-    // Check if driver already exists
     const existingDriver = await Driver.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] });
     if (existingDriver)
       return res.status(400).json({ success: false, message: "Driver already exists with this email or phone number" });
@@ -72,7 +71,7 @@ exports.registerDriver = async (req, res) => {
       email: email.toLowerCase(),
       phone: formattedPhone,
       verificationCode: otp,
-      otpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+      otpExpiry: new Date(Date.now() + 10 * 60 * 1000), 
       isVerified: false,
       loginVerificationCode: null,
       loginOtpExpiry: null,
@@ -81,7 +80,6 @@ exports.registerDriver = async (req, res) => {
 
     await driver.save();
 
-    // ✅ Send OTP only once here
     await sendEmailVerificationOTP(driver.email, otp, driver.name);
 
     res.status(201).json({
@@ -95,7 +93,8 @@ exports.registerDriver = async (req, res) => {
   }
 };
 
-// ---------------------- LOGIN USER ----------------------
+// ---------------------- LOGIN USER ---------------------------
+
 exports.loginUser = async (req, res) => {
   try {
     const { email } = req.body;
@@ -107,21 +106,18 @@ exports.loginUser = async (req, res) => {
     const now = new Date();
     let otp;
 
-    // Generate new OTP if none exists, expired, or already verified
     if (!user.loginVerificationCode || user.loginOtpExpiry < now || user.loginOtpVerified) {
       otp = generateOTP().toString();
       user.loginVerificationCode = otp;
-      user.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      user.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
       user.loginOtpVerified = false;
       await user.save();
       console.log(`[LOGIN] Generated new OTP for ${user.email}: ${otp}`);
     } else {
-      // Reuse existing OTP
       otp = user.loginVerificationCode;
       console.log(`[LOGIN] Reusing OTP for ${user.email}: ${otp}`);
     }
 
-    // ✅ Always send OTP to email
     await sendEmailVerificationOTP(user.email, otp, user.name);
 
     res.json({ success: true, message: "Login OTP sent to your email" });
@@ -132,6 +128,7 @@ exports.loginUser = async (req, res) => {
 };
 
 // ---------------------- LOGIN DRIVER ----------------------
+
 exports.loginDriver = async (req, res) => {
   try {
     const { email } = req.body;
@@ -166,6 +163,7 @@ exports.loginDriver = async (req, res) => {
 };
 
 // ---------------------- VERIFY EMAIL OTP ----------------------
+
 exports.verifyEmailOtp = async (req, res) => {
   try {
     const { email, otp, type } = req.body;
@@ -241,6 +239,7 @@ exports.verifyEmailOtp = async (req, res) => {
 };
 
 // ---------------------- RESEND EMAIL OTP ----------------------
+
 exports.resendEmailOtp = async (req, res) => {
   try {
     const { email, type } = req.body;
@@ -259,7 +258,6 @@ exports.resendEmailOtp = async (req, res) => {
       else if (driver && !driver.isVerified) account = driver;
       else return res.status(400).json({ success: false, message: "Email already verified" });
 
-      // Generate new OTP for registration
       const otp = generateOTP().toString();
       account.verificationCode = otp;
       account.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
@@ -270,12 +268,10 @@ exports.resendEmailOtp = async (req, res) => {
     }
 
     if (type === "login") {
-      // Check if already verified
       if (account.loginOtpVerified === true) {
         return res.status(400).json({ success: false, message: "OTP already verified. You're logged in." });
       }
 
-      // Generate new OTP only when needed
       const otp = generateOTP().toString();
       account.loginVerificationCode = otp;
       account.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
@@ -295,6 +291,7 @@ exports.resendEmailOtp = async (req, res) => {
 
 
 // ---------------------- GET PROFILE ----------------------
+
 exports.getProfile = async (req, res) => {
   try {
     const Model = req.role === "user" ? User : Driver;
@@ -307,7 +304,8 @@ exports.getProfile = async (req, res) => {
   }
 };
 
-// ---------------------- LOGOUT ----------------------
+// ---------------------- LOGOUT --------------------------
+
 exports.logout = async (req, res) => {
   try {
     res.json({ success: true, message: "Logged out successfully" });
@@ -316,3 +314,4 @@ exports.logout = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error during logout" });
   }
 };
+

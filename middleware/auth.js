@@ -33,7 +33,6 @@ const auth = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
     console.log("[v0] Decoded token:", decoded)
 
-    // Check if it's a user or driver token
     if (decoded.role === "user") {
       const user = await User.findById(decoded.id).select("-password")
       if (!user) {
@@ -83,3 +82,4 @@ const auth = async (req, res, next) => {
 }
 
 module.exports = { auth}
+

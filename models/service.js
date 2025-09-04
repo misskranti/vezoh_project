@@ -70,7 +70,7 @@ const serviceSchema = new mongoose.Schema(
     },
     maxDistance: {
       type: Number,
-      default: 50, // in kilometers
+      default: 50, 
     },
     sortOrder: {
       type: Number,

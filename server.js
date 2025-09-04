@@ -19,8 +19,8 @@ const server = http.createServer(app)
 
 app.use(cors())
 app.use(express.json())
-
 app.use(express.urlencoded({ extended: true }))
+
 
 mongoose
   .connect(process.env.MONGO_URI)
@@ -29,7 +29,7 @@ mongoose
 
 app.use("/api/auth", require("./routes/auth"))
 app.use('/api', authRoutes); 
-//app.use("/api/dashboard", require("./routes/dashboard"))
+app.use("/api/dashboard", require("./routes/dashboard"))
 
 app.use((err, req, res, next) => {
   console.error(err.stack)
