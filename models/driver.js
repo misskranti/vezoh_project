@@ -30,6 +30,13 @@ const driverSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+     otpExpiry: { type: Date, default: null },
+
+    // Login OTP fields for drivers
+    loginVerificationCode: { type: String, default: null },
+    loginOtpExpiry: { type: Date, default: null },
+    loginOtpVerified: { type: Boolean, default: false },
+
     documents: {
       drivingLicense: {
         number: String,
@@ -95,7 +102,7 @@ const driverSchema = new mongoose.Schema(
       isAvailable: { type: Boolean, default: true },
       workingHours: {
         start: String, // "09:00"
-        end: String, // "22:00"
+        end: String,   // "22:00"
       },
     },
     earnings: {
