@@ -26,10 +26,16 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    verificationCode: {
-      type: String,
-      default: null,
-    },
+
+    // Registration OTP
+    verificationCode: { type: String, default: null },
+    otpExpiry: { type: Date, default: null },
+
+    // Login OTP
+    loginVerificationCode: { type: String, default: null },
+    loginOtpExpiry: { type: Date, default: null },
+    loginOtpVerified: { type: Boolean, default: false }, 
+
     addresses: [
       {
         type: {

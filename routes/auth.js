@@ -10,11 +10,12 @@ const router = express.Router()
 router.post("/register/user", authController.registerUser)
 
 // Email verification
-router.post("/verify-email-otp", auth, authController.verifyEmailOtp)
-router.post("/resend-email-otp", auth, authController.resendEmailOtp)
+router.post("/verify-email-otp", authController.verifyEmailOtp)
+router.post("/resend-email-otp", authController.resendEmailOtp)
 
 // Login
 router.post("/login/user", authController.loginUser)
+
 router.post("/login/driver", authController.loginDriver)
 
 // Profile & Logout

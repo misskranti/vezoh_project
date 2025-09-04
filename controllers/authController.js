@@ -5,25 +5,6 @@ const Driver = require("../models/driver")
 const { generateOTP, formatPhoneNumber, isValidEmail, isValidPhone } = require("../utils/helpers")
 const { sendEmailVerificationOTP } = require("../utils/emailService")
 
-let twilioClient = null
-
-// Initialize Twilio client
-const initializeTwilio = () => {
-  if (
-    !twilioClient &&
-    process.env.TWILIO_ACCOUNT_SID &&
-    process.env.TWILIO_AUTH_TOKEN &&
-    process.env.TWILIO_ACCOUNT_SID.startsWith("AC") &&
-    process.env.TWILIO_ACCOUNT_SID !== "your_twilio_sid"
-  ) {
-    try {
-      twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-    } catch (error) {
-      twilioClient = null
-    }
-  }
-  return twilioClient
-}
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "30d" })
@@ -33,44 +14,195 @@ const generateToken = (id, role) => {
 exports.registerUser = async (req, res) => {
   try {
     const { name, email, phone } = req.body
-    if (!name || !email || !phone) return res.status(400).json({ success: false, message: "Please provide all required fields" })
+    if (!name || !email || !phone)
+      return res.status(400).json({ success: false, message: "Please provide all required fields" })
     if (!isValidEmail(email)) return res.status(400).json({ success: false, message: "Please provide a valid email address" })
     if (!isValidPhone(phone)) return res.status(400).json({ success: false, message: "Please provide a valid phone number" })
 
     const formattedPhone = formatPhoneNumber(phone)
     const existingUser = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] })
-   // const existingDriver = await Driver.findOne({ $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }] })
+    if (existingUser)
+      return res.status(400).json({ success: false, message: "User already exists with this email or phone number." });
 
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User already exists with this email or phone number."
-      })
-    }
+    const otp = generateOTP();
+    const user = new User({
+      name: name.trim(),
+      email: email.toLowerCase(),
+      phone: formattedPhone,
+      verificationCode: otp,
+      otpExpiry: new Date(Date.now() + 5 * 60 * 1000),
+      isVerified: false,
+    });
 
-//     if (existingDriver) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "This email or phone number is already registered in the Vezoh Driver app."
-// })
-//     }
-
-    const otp = generateOTP()
-    const user = new User({ name: name.trim(), email: email.toLowerCase(), phone: formattedPhone, verificationCode: otp })
     await user.save()
-
     await sendEmailVerificationOTP(user.email, otp, user.name)
 
-    const token = generateToken(user._id, "user")
     res.status(201).json({
       success: true,
       message: "User registered successfully. Please check your email for the verification code.",
-      data: { id: user._id.toString(), token: token },
-    })
-  } catch {
-    res.status(500).json({ success: false, message: "Server error during registration" })
+      data: { id: user._id.toString() },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error during registration" });
   }
-}
+};
+
+
+exports.loginUser = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(400).json({ success: false, message: "User not found" });
+    }
+
+    const otp = generateOTP();
+    user.loginVerificationCode = otp;
+    user.loginOtpExpiry = new Date(Date.now() + 5 * 60 * 1000); 
+    user.loginOtpVerified = false;   
+    await user.save();
+
+    console.log(`[LOGIN] Generated OTP for ${user.email}: ${otp}`);
+    await sendEmailVerificationOTP(user.email, otp, user.name);
+
+    res.json({ success: true, message: "Login OTP sent to your email" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error during login" });
+  }
+};
+
+
+exports.verifyEmailOtp = async (req, res) => {
+  try {
+    const { email, otp, type } = req.body;
+    if (!email || !otp || !type) {
+      return res.status(400).json({ success: false, message: "Please provide email, otp, and type" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(400).json({ success: false, message: "User not found" });
+    }
+
+    console.log(`[VERIFY] Incoming request ->`, { email, otp, type });
+    console.log(`[VERIFY] User record from DB ->`, {
+      verificationCode: user.verificationCode,
+      otpExpiry: user.otpExpiry,
+      loginVerificationCode: user.loginVerificationCode,
+      loginOtpExpiry: user.loginOtpExpiry,
+      isVerified: user.isVerified,
+    });
+
+    if (type === "registration") {
+      if (user.isVerified) {
+        return res.status(400).json({ success: false, message: "Email already verified" });
+      }
+
+      console.log(`[VERIFY-REG] Checking -> DB OTP: ${user.verificationCode}, Incoming OTP: ${otp}, Expiry: ${user.otpExpiry}`);
+
+      if (user.verificationCode !== otp || !user.otpExpiry || user.otpExpiry < new Date()) {
+        return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+      }
+
+      user.isVerified = true;
+      user.verificationCode = null;
+      user.otpExpiry = null;
+      await user.save();
+
+      return res.json({ success: true, message: "Email verified successfully" });
+    }
+
+    else if (type === "login") {
+      console.log("[VERIFY-LOGIN] Checking login OTP...");
+
+      if (
+        user.loginVerificationCode !== otp ||
+        !user.loginOtpExpiry ||
+        user.loginOtpExpiry < new Date()
+      ) {
+        console.log(`[VERIFY-LOGIN] Invalid OTP! Expected: ${user.loginVerificationCode} Received: ${otp}`);
+        return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+      }
+
+      user.loginOtpVerified = true;
+      user.loginVerificationCode = null;
+      user.loginOtpExpiry = null;
+      await user.save();
+
+      return res.json({ success: true, message: "Login verified successfully" });
+    }
+
+    else {
+      return res.status(400).json({ success: false, message: "Invalid type" });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error during OTP verification" });
+  }
+};
+
+
+exports.resendEmailOtp = async (req, res) => {
+  try {
+    const { email, type } = req.body;
+    if (!email || !type) {
+      return res.status(400).json({ success: false, message: "Please provide email and type" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(400).json({ success: false, message: "User not found" });
+    }
+
+    if (type === "registration") {
+      if (user.isVerified) {
+        return res.status(400).json({ success: false, message: "Email already verified" });
+      }
+
+      const otp = generateOTP();
+      user.verificationCode = otp;
+      user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save();
+
+      console.log(`[RESEND-REG] New OTP for ${user.email}: ${otp}`);
+
+      await sendEmailVerificationOTP(user.email, otp, user.name);
+      return res.json({ success: true, message: "Registration OTP resent successfully" });
+    }
+
+    else if (type === "login") {
+      if (user.loginOtpVerified) {
+        return res.status(400).json({
+          success: false,
+          message: "OTP already verified. You're logged in."
+        });
+      }
+
+      const otp = generateOTP();
+      user.loginVerificationCode = otp;
+      user.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save();
+
+      await sendEmailVerificationOTP(user.email, otp, user.name);
+      return res.json({ success: true, message: "Login OTP resent successfully" });
+    }
+
+
+    else {
+      return res.status(400).json({ success: false, message: "Invalid type" });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error during resend OTP" });
+  }
+};
+
 
 // Register Driver
 exports.registerDriverComplete = async (req, res) => {
@@ -110,9 +242,7 @@ exports.registerDriverComplete = async (req, res) => {
     const existingDriver = await Driver.findOne({
       $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }]
     })
-    // const existingUser = await User.findOne({
-    //   $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }]
-    // })
+    
 
     if (existingDriver) {
       return res.status(400).json({
@@ -120,14 +250,6 @@ exports.registerDriverComplete = async (req, res) => {
         message: "Driver already exists with this email or phone number"
       })
     }
-
-    //   if ( existingUser) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "This email or phone number is already registered in the Vezoh User app"
-    //   })
-    // }
-
 
     let parsedServices;
     try {
@@ -190,7 +312,7 @@ exports.registerDriverComplete = async (req, res) => {
       email: email.toLowerCase(),
       phone: formattedPhone,
       verificationCode: otp,
-      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
+      otpExpiry: new Date(Date.now() + 5 * 60 * 1000),
       services: parsedServices,
       vehicle: {
         type: vehicleType.toLowerCase(),
@@ -271,75 +393,6 @@ exports.registerDriverComplete = async (req, res) => {
       success: false,
       message: "Registration failed. Please try again."
     });
-  }
-}
-
-
-// Verify Email OTP
-exports.verifyEmailOtp = async (req, res) => {
-  try {
-    const { email, otp } = req.body
-    const role = req.role
-    if (!email || !otp) return res.status(400).json({ success: false, message: "Please provide email and OTP" })
-
-    const Model = role === "user" ? User : Driver
-    const user = await Model.findById(req.user._id)
-    if (!user) return res.status(404).json({ success: false, message: "User not found" })
-    if (user.email.toLowerCase() !== email.toLowerCase()) return res.status(400).json({ success: false, message: "Email does not match the authenticated user" })
-    if (user.isVerified) return res.status(400).json({ success: false, message: "Email is already verified" })
-    if (user.verificationCode !== otp) return res.status(400).json({ success: false, message: "Invalid OTP" })
-    if (user.otpExpiry && new Date() > user.otpExpiry) return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." })
-
-    user.isVerified = true
-    user.verificationCode = null
-    user.otpExpiry = null
-    await user.save()
-
-    const token = generateToken(user._id, role)
-    res.json({ success: true, message: "Email verified successfully" })
-  } catch {
-    res.status(500).json({ success: false, message: "Server error during email verification" })
-  }
-}
-
-// Resend Email OTP
-exports.resendEmailOtp = async (req, res) => {
-  try {
-    const { email } = req.body
-    const role = req.role
-    if (!email) return res.status(400).json({ success: false, message: "Please provide email" })
-
-    const Model = role === "user" ? User : Driver
-    const user = await Model.findById(req.user._id)
-    if (!user) return res.status(404).json({ success: false, message: "User not found" })
-    if (user.email.toLowerCase() !== email.toLowerCase()) return res.status(400).json({ success: false, message: "Email does not match the authenticated user" })
-    if (user.isVerified) return res.status(400).json({ success: false, message: "Email is already verified" })
-
-    const otp = generateOTP()
-    user.verificationCode = otp
-    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000)
-    await user.save()
-
-    await sendEmailVerificationOTP(user.email, otp, user.name)
-    res.json({ success: true, message: "OTP sent successfully to your email" })
-  } catch {
-    res.status(500).json({ success: false, message: "Server error while sending OTP" })
-  }
-}
-
-// Login User
-exports.loginUser = async (req, res) => {
-  try {
-    const { identifier } = req.body
-    if (!identifier) return res.status(400).json({ success: false, message: "Please provide email" })
-
-    const user = await User.findOne({ email: identifier.toLowerCase() })
-    if (!user) return res.status(400).json({ success: false, message: "Invalid credentials" })
-
-    const token = generateToken(user._id, "user")
-    res.json({ success: true, message: "Login successful", data: { id: user._id.toString(), token: token } })
-  } catch {
-    res.status(500).json({ success: false, message: "Server error during login" })
   }
 }
 
