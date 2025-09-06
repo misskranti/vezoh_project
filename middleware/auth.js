@@ -44,7 +44,11 @@ const auth = async (req, res, next) => {
       req.user = user
       req.role = "user"
     } else if (decoded.role === "driver") {
+
+
       const driver = await Driver.findById(decoded.id).select("-password")
+
+      console.log("kkkkkkkkk===>", driver)
       if (!driver) {
         return res.status(401).json({
           success: false,
@@ -81,5 +85,5 @@ const auth = async (req, res, next) => {
   }
 }
 
-module.exports = { auth}
+module.exports = { auth }
 

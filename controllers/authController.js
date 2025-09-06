@@ -216,8 +216,6 @@ exports.loginDriver = async (req, res) => {
       otp = driver.loginVerificationCode;
       console.log(`[LOGIN] Reusing OTP for ${driver.email}: ${otp}`);
     }
-
-    // ✅ Always send OTP to email
     await sendEmailVerificationOTP(driver.email, otp, driver.name);
 
     res.json({ success: true, message: "Login OTP sent to your email" });
@@ -231,7 +229,8 @@ exports.loginDriver = async (req, res) => {
 
 // ---------------------- VERIFY EMAIL OTP ----------------------
 
-exports.verifyEmailOtp = async (req, res) => {
+// Verify Email OTP for Users
+exports.verifyUserEmailOtp = async (req, res) => {
   try {
     const { email, otp, type } = req.body;
     if (!email || !otp || !type)
@@ -329,10 +328,7 @@ exports.verifyEmailOtp = async (req, res) => {
           .json({ success: false, message: "Invalid or expired OTP" });
       }
 
-      account.loginOtpVerified = true;
-      account.loginVerificationCode = null;
-      account.loginOtpExpiry = null;
-      await account.save();
+      token = generateToken(user._id, "user");
 
       return res.json({
         success: true,
@@ -349,9 +345,9 @@ exports.verifyEmailOtp = async (req, res) => {
   }
 };
 
-// ---------------------- RESEND EMAIL OTP ----------------------
 
-exports.resendEmailOtp = async (req, res) => {
+//  Verify Email OTP for Drivers
+exports.verifyDriverEmailOtp = async (req, res) => {
   try {
     const { email, type } = req.body;
     if (!email || !type)
@@ -359,8 +355,12 @@ exports.resendEmailOtp = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Please provide email and type" });
 
-    const user = await User.findOne({ email: email.toLowerCase() });
     const driver = await Driver.findOne({ email: email.toLowerCase() });
+    if (!driver) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Driver not found" });
+    }
 
     let account = user || driver;
 
@@ -377,10 +377,15 @@ exports.resendEmailOtp = async (req, res) => {
           .status(400)
           .json({ success: false, message: "Email already verified" });
 
-      const otp = generateOTP().toString();
-      account.verificationCode = otp;
-      account.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-      await account.save();
+      if (
+        driver.verificationCode.toString() !== otp.toString() ||
+        !driver.otpExpiry ||
+        driver.otpExpiry < new Date()
+      ) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid or expired OTP" });
+      }
 
       await sendEmailVerificationOTP(account.email, otp, account.name);
       return res.json({
@@ -398,10 +403,9 @@ exports.resendEmailOtp = async (req, res) => {
       }
 
       const otp = generateOTP().toString();
-      account.loginVerificationCode = otp;
-      account.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-      account.loginOtpVerified = false;
-      await account.save();
+      user.verificationCode = otp;
+      user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save();
 
       await sendEmailVerificationOTP(account.email, otp, account.name);
       return res.json({
