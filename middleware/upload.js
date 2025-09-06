@@ -19,6 +19,7 @@ const storage = multer.diskStorage({
   },
 });
 
+// File filter - allow only images and PDFs
 const fileFilter = (req, file, cb) => {
   const allowedMimeTypes = [
     "image/jpeg", 
@@ -36,23 +37,24 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// Multer instance
 const upload = multer({
   storage,
   fileFilter,
   limits: { 
-    fileSize: 5 * 1024 * 1024, 
-    files: 3,
+    fileSize: 5 * 1024 * 1024, // 5MB max file size
+    files: 3, // Max 3 files
   },
 });
 
-
+// Upload fields
 const driverDocuments = upload.fields([
   { name: "drivingLicense", maxCount: 1 },
   { name: "rcCertificate", maxCount: 1 },
   { name: "vehicleInsurance", maxCount: 1 },
 ]);
 
-
+// Error handling middleware
 const handleUploadErrors = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     let message = "File upload error";
@@ -87,7 +89,7 @@ const handleUploadErrors = (err, req, res, next) => {
   next(err);
 };
 
-
+//cleanup uploaded files if something fails
 const cleanupFiles = (files) => {
   if (!files) return;
   Object.values(files).forEach((fileArr) => {

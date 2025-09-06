@@ -6,13 +6,14 @@ const {
   servicesList,
   particularService,
   addServices,
+  driverServices
 } = require("../controllers/serviceController.js");
 const { throwError } = require("../middleware/errorMiddleware.js");
 
 router.post("/services/add-services", addServices);
+router.post("/driverservices", auth, driverServices);
 
 router.get("/services", auth, servicesList);
-
 router.get(
   "/services/:service",
   auth,

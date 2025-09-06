@@ -1,4 +1,5 @@
 const Service = require("../models/service.js");
+const Driver = require("../models/driver.js");
 
 exports.addServices = async (req, res) => {
   try {
@@ -65,6 +66,62 @@ exports.particularService = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch service details",
+    });
+  }
+};
+
+exports.driverServices = async (req, res) => {
+  try {
+    const { services } = req.body;
+    const driverId = req.user._id;
+
+    if (!services || !Array.isArray(services)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide services as an array",
+      });
+    }
+    
+    const serviceMapping = {
+      ride: "ride",
+      courier: "delivery",
+      freight: "freight",
+    };
+
+    const mappedServices = services.map(service => serviceMapping[service] || service);
+  
+    const allowedServices = ["ride", "delivery", "freight"];
+    const invalidServices = mappedServices.filter(service => !allowedServices.includes(service));
+    
+    if (invalidServices.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid services: ${invalidServices.join(", ")}. Allowed services are: ${allowedServices.join(", ")}`,
+      });
+    }
+
+    const updatedDriver = await Driver.findByIdAndUpdate(
+      driverId,
+      { $set: { services: mappedServices } },
+      { new: true, runValidators: true }
+    ).select("_id name email phone services");
+
+    if (!updatedDriver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Driver services registered successfully",
+    });
+  } catch (err) {
+    console.error("Error registering driver services:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while registering driver services",
     });
   }
 };
