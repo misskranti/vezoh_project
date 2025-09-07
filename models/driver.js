@@ -128,11 +128,6 @@ const driverSchema = new mongoose.Schema(
       accountHolderName: String,
       bankName: String,
     },
-    verificationStatus: {
-      type: String,
-      enum: ["pending", "under_review", "approved", "rejected"],
-      default: "pending",
-    },
   },
   {
     timestamps: true,

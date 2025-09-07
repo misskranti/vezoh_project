@@ -5,9 +5,10 @@ const cors = require("cors");
 const http = require("http");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
-const authRoutes = require("./routes/auth");
-const dashboardRoutes = require("./routes/dashboard");
-const serviceRoutes = require("./routes/services");
+const authRoutes = require("./routes/auth.js");
+const dashboardRoutes = require("./routes/dashboard.js");
+const serviceRoutes = require("./routes/services.js");
+const driverRoutes = require("./routes/driver.js");
 
 const app = express();
 const server = http.createServer(app);
@@ -26,7 +27,8 @@ mongoose
 
 app.use("/api/auth", authRoutes);     
 app.use("/api/dashboard", dashboardRoutes); 
-app.use("/api/services", serviceRoutes);
+app.use("/api", serviceRoutes);
+app.use("/api/driver", driverRoutes);
 
 app.get("/", (req, res) => {
   res.json({

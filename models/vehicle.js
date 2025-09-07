@@ -59,10 +59,15 @@ const vehicleSchema = new mongoose.Schema(
         isVerified: { type: Boolean, default: false },
       },
     },
-    status: {
+    // status: {
+    //   type: String,
+    //   enum: ["Pending", "Verified", "Rejected"],
+    //   default: "Pending",
+    // },
+    verificationStatus: {
       type: String,
-      enum: ["Pending", "Verified", "Rejected"],
-      default: "Pending",
+      enum: ["pending", "under_review", "approved", "rejected"],
+      default: "pending",
     },
   },
   { timestamps: true }

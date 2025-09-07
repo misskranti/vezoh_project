@@ -1,10 +1,6 @@
 const express = require("express");
 const { auth } = require("../middleware/auth");
 const authController = require("../controllers/authController");
-const vehicleController = require("../controllers/vehicleController");
-
-const { driverDocuments,handleUploadErrors } = require('../middleware/upload');
-
 const router = express.Router();
 
 // Registration
@@ -29,13 +25,6 @@ router.post("/login/driver", authController.loginDriver);
 
 router.get("/profile", auth, authController.getProfile);
 router.post("/logout", auth, authController.logout);
-
-router.post(
-  "/register/vehicle", auth,
-  driverDocuments,
-  handleUploadErrors,
-  vehicleController.vehicleRegistration
-);
 
 
 module.exports = router;

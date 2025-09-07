@@ -1,41 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const { auth } = require("../middleware/auth.js");
-const { param, body } = require("express-validator");
+const { param } = require("express-validator");
 const {
   servicesList,
   particularService,
   addServices,
-  driverServices,
+  // driverServices
 } = require("../controllers/serviceController.js");
 const { throwError } = require("../middleware/errorMiddleware.js");
 
 router.post("/services/add-services", addServices);
-router.post(
-  "/driver-services",
-  auth,
-  body("services")
-    .trim()
-    .notEmpty()
-    .withMessage("Please select some services")
-    .bail()
-    .isArray()
-    .withMessage("Invalid format of service selection.")
-    .bail()
-    .custom((value) => {
-      if (!value.length) {
-        throw new Error("Please select some services");
-      }
-      for (let ele of value) {
-        if (!["ride", "courier", "freight"].includes(ele)) {
-          throw new Error("Invalid value in service selection");
-        }
-      }
-      return true;
-    }),
-  throwError,
-  driverServices
-);
+// router.post("/driverservices", auth, driverServices);
 
 router.get("/services", auth, servicesList);
 router.get(

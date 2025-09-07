@@ -1,6 +1,7 @@
 const Service = require("../models/service.js");
-const Driver = require("../models/driver.js");
+// const Driver = require("../models/driver.js");
 
+// --------------------------------System Add Services--------------------------------//
 exports.addServices = async (req, res) => {
   try {
     await Service.deleteMany({});
@@ -18,6 +19,7 @@ exports.addServices = async (req, res) => {
   }
 };
 
+//-------------------------------Available Services ----------------------------------//
 exports.servicesList = async (req, res) => {
   try {
     const services = await Service.find({ active: true })
@@ -40,6 +42,7 @@ exports.servicesList = async (req, res) => {
   }
 };
 
+//------------------------------Particular Service Details----------------------------//
 exports.particularService = async (req, res) => {
   try {
     const { service } = req.params;
@@ -126,34 +129,3 @@ exports.driverServices = async (req, res) => {
   }
 };
  */
-
-exports.driverServices = async (req, res) => {
-  try {
-    const { services } = req.body;
-    const driverId = req.user._id;
-
-    const updatedDriver = await Driver.findByIdAndUpdate(
-      driverId,
-      { $set: { services: services } },
-      { new: true, runValidators: true }
-    ).select("_id name email phone services");
-
-    if (!updatedDriver) {
-      return res.status(404).json({
-        success: false,
-        message: "Driver not found",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Driver services registered successfully",
-    });
-  } catch (err) {
-    console.error("Error registering driver services:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error while registering driver services",
-    });
-  }
-};

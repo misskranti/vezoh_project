@@ -1,8 +1,39 @@
+const Driver = require("../models/driver.js");
+const Vehicle = require("../models/vehicle.js");
 
+//-------------------------- Driver Opt Services -----------------------------------------//
+exports.driverOptServices = async (req, res) => {
+  try {
+    const { services } = req.body;
+    const driverId = req.user._id;
 
-const Driver = require("../models/driver");
-const Vehicle = require("../models/vehicle");
+    const updatedDriver = await Driver.findByIdAndUpdate(
+      driverId,
+      { $set: { services: services } },
+      { new: true, runValidators: true }
+    ).select("_id name email phone services");
 
+    if (!updatedDriver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Driver services registered successfully",
+    });
+  } catch (err) {
+    console.error("Error registering driver services:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while registering driver services",
+    });
+  }
+};
+
+// ----------------------- Driver Vehicle Registration (Need to be Update Kaya)----------------------//
 exports.vehicleRegistration = async (req, res) => {
   try {
     const { driverId, vehicleType, vehicleNumber, ownerName } = req.body;
