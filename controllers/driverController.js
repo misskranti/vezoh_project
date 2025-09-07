@@ -33,6 +33,33 @@ exports.driverOptServices = async (req, res) => {
   }
 };
 
+//--------------------------Selected Services---------------------------------------------//
+exports.selectedServices = async (req, res) => {
+  try {
+    const fetchDetails = await Vehicle.findOne({ driver: req.user._id }).select(
+      { verificationStatus: 1, driver: 1 }
+    );
+    //   .populate("driver", "_id services"); // No need because driver's whole document is stored in req object
+
+    return res.status(200).json({
+      success: true,
+      message: "Driver Selected Services",
+      data: {
+        verificationStatus: fetchDetails?.verificationStatus || "pending",
+        services: req.user.services,
+        serviceStatus:
+          fetchDetails && fetchDetails?.verificationStatus === "approved"
+            ? "active"
+            : "pending",
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false.valueOf,
+      message: "Server error while fetching selected services",
+    });
+  }
+};
 // ----------------------- Driver Vehicle Registration (Need to be Update Kaya)----------------------//
 exports.vehicleRegistration = async (req, res) => {
   try {
@@ -76,9 +103,7 @@ exports.vehicleRegistration = async (req, res) => {
       "rcCertificate",
       "vehicleInsurance",
     ];
-    const missingFiles = requiredFiles.filter(
-      (field) => !req.files?.[field]
-    );
+    const missingFiles = requiredFiles.filter((field) => !req.files?.[field]);
     if (missingFiles.length > 0) {
       return res.status(400).json({
         success: false,

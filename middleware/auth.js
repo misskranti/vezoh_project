@@ -5,7 +5,7 @@ const Driver = require("../models/driver")
 const auth = async (req, res, next) => {
   try {
     const authHeader = req.header("Authorization")
-    console.log("[v0] Auth header received:", authHeader)
+    // console.log("[v0] Auth header received:", authHeader)
 
     if (!authHeader) {
       return res.status(401).json({
@@ -21,7 +21,7 @@ const auth = async (req, res, next) => {
       token = authHeader
     }
 
-    console.log("[v0] Extracted token:", token ? token.substring(0, 20) + "..." : "null")
+    // console.log("[v0] Extracted token:", token ? token.substring(0, 20) + "..." : "null")
 
     if (!token || token === "null" || token === "undefined") {
       return res.status(401).json({
@@ -31,7 +31,7 @@ const auth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
-    console.log("[v0] Decoded token:", decoded)
+    // console.log("[v0] Decoded token:", decoded)
 
     if (decoded.role === "user") {
       const user = await User.findById(decoded.id).select("-password")
@@ -45,10 +45,9 @@ const auth = async (req, res, next) => {
       req.role = "user"
     } else if (decoded.role === "driver") {
 
-
       const driver = await Driver.findById(decoded.id).select("-password")
 
-      console.log("kkkkkkkkk===>", driver)
+      // console.log("kkkkkkkkk===>", driver)
       if (!driver) {
         return res.status(401).json({
           success: false,

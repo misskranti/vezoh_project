@@ -5,6 +5,7 @@ const { param, body } = require("express-validator");
 const {
   driverOptServices,
   vehicleRegistration,
+  selectedServices,
 } = require("../controllers/driverController.js");
 const { driverDocuments, handleUploadErrors } = require("../middleware/upload");
 
@@ -36,6 +37,7 @@ router.post(
   driverOptServices
 );
 
+router.get("/selected-services", auth, selectedServices);
 router.post(
   "/register-vehicle",
   auth,
