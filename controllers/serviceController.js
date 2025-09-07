@@ -69,7 +69,7 @@ exports.particularService = async (req, res) => {
     });
   }
 };
-
+/*
 exports.driverServices = async (req, res) => {
   try {
     const { services } = req.body;
@@ -103,6 +103,38 @@ exports.driverServices = async (req, res) => {
     const updatedDriver = await Driver.findByIdAndUpdate(
       driverId,
       { $set: { services: mappedServices } },
+      { new: true, runValidators: true }
+    ).select("_id name email phone services");
+
+    if (!updatedDriver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Driver services registered successfully",
+    });
+  } catch (err) {
+    console.error("Error registering driver services:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while registering driver services",
+    });
+  }
+};
+ */
+
+exports.driverServices = async (req, res) => {
+  try {
+    const { services } = req.body;
+    const driverId = req.user._id;
+
+    const updatedDriver = await Driver.findByIdAndUpdate(
+      driverId,
+      { $set: { services: services } },
       { new: true, runValidators: true }
     ).select("_id name email phone services");
 

@@ -81,7 +81,7 @@ const driverSchema = new mongoose.Schema(
     services: [
       {
         type: String,
-        enum: ["ride", "delivery", "freight"],
+        enum: ["ride", "courier", "freight"],
       },
     ],
     location: {
