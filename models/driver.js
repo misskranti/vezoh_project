@@ -1,5 +1,5 @@
-const mongoose = require("mongoose")
-  
+const mongoose = require("mongoose");
+
 const driverSchema = new mongoose.Schema(
   {
     name: {
@@ -30,54 +30,54 @@ const driverSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-     otpExpiry: { type: Date, default: null },
+    otpExpiry: { type: Date, default: null },
 
     loginVerificationCode: { type: String, default: null },
     loginOtpExpiry: { type: Date, default: null },
     loginOtpVerified: { type: Boolean, default: false },
 
-    documents: {
-      drivingLicense: {
-        number: String,
-        frontImage: String,
-        backImage: String,
-        expiryDate: Date,
-        isVerified: { type: Boolean, default: false },
-      },
-      vehicleRegistration: {
-        number: String,
-        image: String,
-        expiryDate: Date,
-        isVerified: { type: Boolean, default: false },
-      },
-      insurance: {
-        number: String,
-        image: String,
-        expiryDate: Date,
-        isVerified: { type: Boolean, default: false },
-      },
-      aadhar: {
-        number: String,
-        frontImage: String,
-        backImage: String,
-        isVerified: { type: Boolean, default: false },
-      },
-    },
-    vehicle: {
-      type: {
-        type: String,
-        enum: ["bike", "auto", "car", "truck"],
-      },
-      make: String,
-      model: String,
-      year: Number,
-      color: String,
-      plateNumber: String,
-      capacity: {
-        passengers: Number,
-        weight: Number,
-      },
-    },
+    // documents: { // shifted in vehicle model
+    //   drivingLicense: {
+    //     number: String,
+    //     frontImage: String,
+    //     backImage: String,
+    //     expiryDate: Date,
+    //     isVerified: { type: Boolean, default: false },
+    //   },
+    //   vehicleRegistration: {
+    //     number: String,
+    //     image: String,
+    //     expiryDate: Date,
+    //     isVerified: { type: Boolean, default: false },
+    //   },
+    //   insurance: {
+    //     number: String,
+    //     image: String,
+    //     expiryDate: Date,
+    //     isVerified: { type: Boolean, default: false },
+    //   },
+    //   aadhar: {
+    //     number: String,
+    //     frontImage: String,
+    //     backImage: String,
+    //     isVerified: { type: Boolean, default: false },
+    //   },
+    // },
+    // vehicle: { // shifted in vehicle model
+    //   type: {
+    //     type: String,
+    //     enum: ["bike", "auto", "car", "truck"],
+    //   },
+    //   make: String,
+    //   model: String,
+    //   year: Number,
+    //   color: String,
+    //   plateNumber: String,
+    //   capacity: {
+    //     passengers: Number,
+    //     weight: Number,
+    //   },
+    // },
     services: [
       {
         type: String,
@@ -100,8 +100,8 @@ const driverSchema = new mongoose.Schema(
     availability: {
       isAvailable: { type: Boolean, default: true },
       workingHours: {
-        start: String, 
-        end: String,  
+        start: String,
+        end: String,
       },
     },
     earnings: {
@@ -115,7 +115,7 @@ const driverSchema = new mongoose.Schema(
       totalTrips: { type: Number, default: 0 },
       completedTrips: { type: Number, default: 0 },
       cancelledTrips: { type: Number, default: 0 },
-      totalDistance: { type: Number, default: 0 }, 
+      totalDistance: { type: Number, default: 0 },
       totalTime: { type: Number, default: 0 },
     },
     rating: {
@@ -136,11 +136,12 @@ const driverSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  },
-)
+  }
+);
 
-driverSchema.index({ "location.coordinates": "2dsphere" })
-driverSchema.index({ status: 1 })
-driverSchema.index({ services: 1 })
+driverSchema.index({ "location.coordinates": "2dsphere" });
+driverSchema.index({ status: 1 });
+driverSchema.index({ services: 1 });
 
-module.exports = mongoose.models.Driver || mongoose.model("Driver", driverSchema)
+module.exports =
+  mongoose.models.Driver || mongoose.model("Driver", driverSchema);

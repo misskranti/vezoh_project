@@ -7,26 +7,57 @@ const vehicleSchema = new mongoose.Schema(
       ref: "Driver",
       required: true,
     },
-    vehicleType: {
-      type: String,
-      required: true,
-      enum: ["Car", "Bike", "Auto Rickshaw", "Van", "Other"], // optional enum
-    },
-    vehicleNumber: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
+    vehicle: {
+      type: {
+        type: String,
+        enum: ["bike", "auto", "car", "truck", "van", "other"],
+      },
+      make: String,
+      model: String,
+      year: Number,
+      color: String,
+      plateNumber: String,
+      capacity: {
+        passengers: Number,
+        weight: Number,
+      },
     },
     ownerName: {
       type: String,
       required: true,
       trim: true,
     },
+    // documents: {
+    //   drivingLicense: { type: String },
+    //   rcCertificate: { type: String },
+    //   vehicleInsurance: { type: String },
+    // },
     documents: {
-      drivingLicense: { type: String },
-      rcCertificate: { type: String },
-      vehicleInsurance: { type: String },
+      drivingLicense: {
+        number: String,
+        frontImage: String,
+        backImage: String,
+        expiryDate: Date,
+        isVerified: { type: Boolean, default: false },
+      },
+      vehicleRegistration: {
+        number: String,
+        image: String,
+        expiryDate: Date,
+        isVerified: { type: Boolean, default: false },
+      },
+      insurance: {
+        number: String,
+        image: String,
+        expiryDate: Date,
+        isVerified: { type: Boolean, default: false },
+      },
+      aadhar: {
+        number: String,
+        frontImage: String,
+        backImage: String,
+        isVerified: { type: Boolean, default: false },
+      },
     },
     status: {
       type: String,
