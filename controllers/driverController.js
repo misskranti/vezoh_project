@@ -63,6 +63,11 @@ exports.selectedServices = async (req, res) => {
 // ----------------------- Driver Vehicle Registration (Need to be Update Kaya)----------------------//
 exports.vehicleRegistration = async (req, res) => {
   try {
+    // // Debug: Log request data
+    // console.log("Request body:", req.body);
+    // console.log("Request files:", req.files);
+    // console.log("Request file keys:", req.files ? Object.keys(req.files) : "No files");
+
     const { driverId, vehicleType, vehicleNumber, ownerName } = req.body;
 
     if (!driverId || !vehicleType || !vehicleNumber || !ownerName) {
@@ -88,8 +93,8 @@ exports.vehicleRegistration = async (req, res) => {
       });
     }
 
-    const existingVehicle = await Driver.findOne({
-      "vehicle.number": vehicleNumber.toUpperCase(),
+    const existingVehicle = await Vehicle.findOne({
+      "vehicle.plateNumber": vehicleNumber.toUpperCase(),
     });
     if (existingVehicle) {
       return res.status(400).json({
@@ -98,41 +103,88 @@ exports.vehicleRegistration = async (req, res) => {
       });
     }
 
+    // Check if driver already has a vehicle registered
+    const driverVehicle = await Vehicle.findOne({ driver: driverId });
+    if (driverVehicle) {
+      return res.status(400).json({
+        success: false,
+        message: "Driver already has a vehicle registered",
+      });
+    }
+
+    // Debug file upload
+    console.log("Checking files...");
+    if (!req.files) {
+      return res.status(400).json({
+        success: false,
+        message: "No files uploaded",
+      });
+    }
+
     const requiredFiles = [
       "drivingLicense",
       "rcCertificate",
       "vehicleInsurance",
     ];
-    const missingFiles = requiredFiles.filter((field) => !req.files?.[field]);
-    if (missingFiles.length > 0) {
+
+    // // More detailed file checking with debug info
+    // const missingFiles = [];
+    // const availableFiles = [];
+
+    // requiredFiles.forEach(field => {
+    //   if (!req.files[field] || !req.files[field][0]) {
+    //     missingFiles.push(field);
+    //   } else {
+    //     availableFiles.push(field);
+    //     console.log(`File ${field} found:`, req.files[field][0].filename);
+    //   }
+    // });
+
+    // console.log("Available files:", availableFiles);
+    // console.log("Missing files:", missingFiles);
+
+       const missingFiles = requiredFiles.filter((field) => !req.files?.[field]);
+       if (missingFiles.length > 0) {
       return res.status(400).json({
         success: false,
         message: "Please upload all required documents",
         missingFiles,
+        // availableFiles, // Add this for debugging
+        // debug: {
+        //   totalFilesReceived: Object.keys(req.files).length,
+        //   fileFields: Object.keys(req.files)
+        // }
       });
     }
 
-    driver.vehicle = {
+    // Create Vehicle document instead of updating Driver
+    const newVehicle = new Vehicle({
+      driver: driverId,
+      vehicle: {
       type: vehicleType.toLowerCase(),
-      number: vehicleNumber.toUpperCase(),
+        plateNumber: vehicleNumber.toUpperCase(),
+      },
       ownerName: ownerName.trim(),
-    };
-
-    driver.documents = {
+      documents: {
       drivingLicense: {
-        image: req.files.drivingLicense[0].path,
+          frontImage: req.files.drivingLicense[0].path,
         isVerified: false,
       },
-      rcCertificate: {
+        vehicleRegistration: {
         image: req.files.rcCertificate[0].path,
         isVerified: false,
       },
-      vehicleInsurance: {
+        insurance: {
         image: req.files.vehicleInsurance[0].path,
         isVerified: false,
       },
-    };
+      },
+      //verificationStatus: "pending",
+    });
 
+    await newVehicle.save();
+
+    // Update driver status
     driver.registrationStep = "vehicle-submitted";
     driver.verificationStatus = "pending";
 
@@ -141,13 +193,45 @@ exports.vehicleRegistration = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Vehicle details submitted successfully",
-      data: {
-        id: driver._id.toString(),
-        vehicle: driver.vehicle,
-      },
+      // data: {
+      //   vehicleId: newVehicle._id.toString(),
+      //   driver: {
+      //     id: driver._id.toString(),
+      //     registrationStep: driver.registrationStep,
+      //   },
+      //   vehicle: {
+      //     type: newVehicle.vehicle.type,
+      //     plateNumber: newVehicle.vehicle.plateNumber,
+      //     ownerName: newVehicle.ownerName,
+      //   },
+      // },
     });
   } catch (error) {
     console.error("Vehicle registration error:", error);
+
+     if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors: validationErrors,
+      });
+    }
+
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid driver ID format",
+      });
+    }
+
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Duplicate entry found",
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Vehicle registration failed. Please try again.",
