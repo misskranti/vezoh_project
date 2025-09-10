@@ -4,10 +4,11 @@ const User = require("../models/user")
 const Driver = require("../models/driver")
 const Ride = require("../models/ride")
 const GoogleMapsService = require("../utils/googleMapsService")
+const { auth } = require("../middleware/auth.js");
 
 // Places API
 
-router.get("/locations/autocomplete", async (req, res) => {
+router.get("/locations/autocomplete", auth, async (req, res) => {
   try {
     const { input, sessionToken, lat, lng } = req.query
 
@@ -34,11 +35,11 @@ router.get("/locations/autocomplete", async (req, res) => {
   }
 })
 
-// Geocoding API
+// Geocoding API 
 
-router.post("/locations/geocode", async (req, res) => {
+router.get("/locations/geocode",auth, async (req, res) => {
   try {
-    const { address, latitude, longitude } = req.body
+    const { address, latitude, longitude } = req.query;
 
     if (address) {
       const geocodeResult = await GoogleMapsService.geocodeAddress(address)
