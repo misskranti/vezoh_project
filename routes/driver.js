@@ -4,9 +4,13 @@ const { auth } = require("../middleware/auth.js");
 const { param, body } = require("express-validator");
 const {
   driverOptServices,
-  vehicleRegistration,
-  selectedServices,
+  
+  selectedServices
 } = require("../controllers/driverController.js");
+
+const {vehicleRegistration,getVehicleVerificationStatus
+} = require("../controllers/vehicleController.js");
+
 const { driverDocuments, handleUploadErrors } = require("../middleware/upload");
 
 const { throwError } = require("../middleware/errorMiddleware.js");
@@ -39,5 +43,8 @@ router.post(
 
 router.get("/selected-services", auth, selectedServices);
 router.post("/register-vehicle", auth, driverDocuments, handleUploadErrors, vehicleRegistration);
+router.get("/verify-vehicle/:driverId", auth, getVehicleVerificationStatus);
+
+
 
 module.exports = router;
