@@ -38,18 +38,6 @@ router.post(
 );
 
 router.get("/selected-services", auth, selectedServices);
-router.post(
-  "/register-vehicle",
-// auth,
-  driverDocuments,
-  handleUploadErrors,
-  vehicleRegistration
-);
-// router.post("/register-vehicle", (req, res, next) => {
-//   console.log("Headers:", req.headers);
-//   next();
-// }, driverDocuments, handleUploadErrors, vehicleRegistration);
-
-
+router.post("/register-vehicle", auth, driverDocuments, handleUploadErrors, vehicleRegistration);
 
 module.exports = router;
