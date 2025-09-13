@@ -87,7 +87,7 @@ exports.vehicleRegistration = async (req, res) => {
 
         // Update driver
         driver.registrationStep = "vehicle-submitted";
-        driver.verificationStatus = "pending";
+        driver.verificationStatus = "under_reveiw";
         await driver.save();
 
         res.status(200).json({
