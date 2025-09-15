@@ -85,13 +85,20 @@ const driverSchema = new mongoose.Schema(
       },
     ],
     location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
       coordinates: {
-        latitude: { type: Number, default: 0 },
-        longitude: { type: Number, default: 0 },
+        type: [Number], // [longitude, latitude]
+        required: true,
+        default: [0, 0],
       },
       address: String,
       lastUpdated: { type: Date, default: Date.now },
     },
+
     status: {
       type: String,
       enum: ["online", "offline", "busy", "inactive"],
@@ -104,6 +111,7 @@ const driverSchema = new mongoose.Schema(
         end: String,
       },
     },
+
     earnings: {
       today: { type: Number, default: 0 },
       thisWeek: { type: Number, default: 0 },
@@ -111,6 +119,7 @@ const driverSchema = new mongoose.Schema(
       total: { type: Number, default: 0 },
       availableToWithdraw: { type: Number, default: 0 },
     },
+
     stats: {
       totalTrips: { type: Number, default: 0 },
       completedTrips: { type: Number, default: 0 },
@@ -118,10 +127,12 @@ const driverSchema = new mongoose.Schema(
       totalDistance: { type: Number, default: 0 },
       totalTime: { type: Number, default: 0 },
     },
+
     rating: {
       average: { type: Number, default: 5.0 },
       count: { type: Number, default: 0 },
     },
+
     bankDetails: {
       accountNumber: String,
       ifscCode: String,
@@ -134,7 +145,7 @@ const driverSchema = new mongoose.Schema(
   }
 );
 
-driverSchema.index({ "location.coordinates": "2dsphere" });
+driverSchema.index({ location: "2dsphere" });
 driverSchema.index({ status: 1 });
 driverSchema.index({ services: 1 });
 

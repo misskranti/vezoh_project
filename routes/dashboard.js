@@ -2,360 +2,334 @@ const express = require("express")
 const router = express.Router()
 const User = require("../models/user")
 const Driver = require("../models/driver")
+const Vehicle = require("../models/vehicle.js")
 const Ride = require("../models/ride")
 const GoogleMapsService = require("../utils/googleMapsService")
 const { auth } = require("../middleware/auth.js");
 
-// Places API
+// ===========================================
+// 1. LOCATION AUTOCOMPLETE API
+// ===========================================
 
 router.get("/locations/autocomplete", auth, async (req, res) => {
   try {
-    const { input, sessionToken, lat, lng } = req.query
+    const { input, sessionToken, lat, lng } = req.query;
+    if (!input || input.length < 3) return res.json({ success: true, data: [] });
 
-    if (!input) {
-      return res.status(400).json({
-        success: false,
-        message: "Input is required",
-      })
-    }
+    const userLocation = lat && lng ? { lat: parseFloat(lat), lng: parseFloat(lng) } : null;
+    const suggestions = await GoogleMapsService.getAutocomplete(input, sessionToken, userLocation);
 
-    const userLocation = lat && lng ? { lat: parseFloat(lat), lng: parseFloat(lng) } : null
-    const suggestions = await GoogleMapsService.getAutocomplete(input, sessionToken, userLocation)
-
-    res.json({
-      success: true,
-      data: suggestions,
-    })
+    res.json({ success: true, data: suggestions });
   } catch (error) {
-    console.error("Autocomplete error:", error)
-    res.status(500).json({
-      success: false,
-      message: "Failed to get autocomplete suggestions",
-    })
+    console.error("Autocomplete error:", error);
+    res.status(500).json({ success: false, message: "Failed to get location suggestions" });
   }
-})
+});
 
-// Geocoding API 
+// ===========================================
+// 2. GEOCODE API
+// ===========================================
 
-router.get("/locations/geocode",auth, async (req, res) => {
+router.get("/locations/geocode", auth, async (req, res) => {
   try {
     const { address, latitude, longitude } = req.query;
 
     if (address) {
-      const geocodeResult = await GoogleMapsService.geocodeAddress(address)
-      return res.json({
-        success: true,
-        data: geocodeResult,
-        type: "forward_geocoding"
-      })
+      const geocodeResult = await GoogleMapsService.geocodeAddress(address);
+      return res.json({ success: true, data: geocodeResult, type: "forward_geocoding" });
     }
 
     if (latitude && longitude) {
-      const reverseGeocodeResult = await GoogleMapsService.reverseGeocode(latitude, longitude)
-      return res.json({
-        success: true,
-        data: reverseGeocodeResult,
-        type: "reverse_geocoding"
-      })
+      const reverseGeocodeResult = await GoogleMapsService.reverseGeocode(latitude, longitude);
+      return res.json({ success: true, data: reverseGeocodeResult, type: "reverse_geocoding" });
     }
 
-    return res.status(400).json({
-      success: false,
-      message: "Either address or coordinates (latitude & longitude) are required",
-    })
+    return res.status(400).json({ success: false, message: "Either address or coordinates are required" });
   } catch (error) {
-    console.error("Geocoding error:", error)
-    res.status(500).json({
-      success: false,
-      message: "Failed to process geocoding request",
-    })
+    console.error("Geocoding error:", error);
+    res.status(500).json({ success: false, message: "Failed to process geocoding request" });
   }
-})
+});
 
-// Distance Matrix API
+// ===========================================
+// 3. ESTIMATE FARE
+// ===========================================
 
-router.post("/locations/distance", async (req, res) => {
+router.post("/ride/estimate-fare", async (req, res) => {
   try {
-    const { origin, destination, mode = "driving" } = req.body
+    const { pickup, destination, vehicleType = "auto" } = req.body;
 
-    if (!origin || !destination || !origin.lat || !origin.lng || !destination.lat || !destination.lng) {
-      return res.status(400).json({
-        success: false,
-        message: "Origin and destination coordinates are required",
-      })
+    if (!pickup?.latitude || !pickup?.longitude || !destination?.latitude || !destination?.longitude) {
+      return res.status(400).json({ success: false, message: "Pickup and destination coordinates are required" });
     }
 
-    const distanceResult = await GoogleMapsService.calculateDistance(origin, destination, mode)
+    const distanceData = await GoogleMapsService.calculateDistance(
+      { lat: pickup.latitude, lng: pickup.longitude },
+      { lat: destination.latitude, lng: destination.longitude },
+      "driving"
+    );
 
-    res.json({
-      success: true,
-      data: distanceResult,
-    })
-  } catch (error) {
-    console.error("Distance calculation error:", error)
-    res.status(500).json({
-      success: false,
-      message: "Failed to calculate distance",
-    })
-  }
-})
+    const distanceKm = distanceData.distance.value / 1000;
+    const durationMin = distanceData.duration.value / 60;
 
-// Find nearby available drivers with accurate Google Maps distance/ETA
+    const fareRates = {
+      bike: { base: 20, perKm: 8, perMin: 1, surge: 1.0 },
+      auto: { base: 30, perKm: 12, perMin: 1.5, surge: 1.0 },
+      car: { base: 50, perKm: 15, perMin: 2, surge: 1.0 },
+    };
 
-router.post("/drivers/nearby", async (req, res) => {
-  try {
-    const { latitude, longitude, vehicleType, serviceType = "ride", radius = 5000 } = req.body
-
-    if (!latitude || !longitude) {
-      return res.status(400).json({
-        success: false,
-        message: "Latitude and longitude are required",
-      })
-    }
-
-    // Find nearby drivers using MongoDB geospatial query
-    const nearbyDrivers = await Driver.find({
-      "location.coordinates.latitude": { $exists: true },
-      "location.coordinates.longitude": { $exists: true },
-      status: "online",
-      "availability.isAvailable": true,
-      services: serviceType,
-      ...(vehicleType && { "vehicle.type": vehicleType }),
-      $expr: {
-        $lte: [
-          {
-            $multiply: [
-              6371000, // Earth's radius in meters
-              {
-                $acos: {
-                  $add: [
-                    {
-                      $multiply: [
-                        { $sin: { $degreesToRadians: "$location.coordinates.latitude" } },
-                        { $sin: { $degreesToRadians: latitude } },
-                      ],
-                    },
-                    {
-                      $multiply: [
-                        { $cos: { $degreesToRadians: "$location.coordinates.latitude" } },
-                        { $cos: { $degreesToRadians: latitude } },
-                        { $cos: { $degreesToRadians: { $subtract: ["$location.coordinates.longitude", longitude] } } },
-                      ],
-                    },
-                  ],
-                },
-              },
-            ],
-          },
-          radius,
-        ],
-      },
-    })
-      .select("name phone vehicle location rating stats")
-      .limit(10)
-
-    // Calculate REAL distance for each driver using Google Distance Matrix API
-    const driversWithDistance = await Promise.all(
-      nearbyDrivers.map(async (driver) => {
-        const driverLat = driver.location.coordinates.latitude
-        const driverLng = driver.location.coordinates.longitude
-
-        try {
-          // Use Google Distance Matrix API for accurate distance and time
-          const distanceData = await GoogleMapsService.calculateDistance(
-            { lat: driverLat, lng: driverLng },
-            { lat: latitude, lng: longitude },
-            "driving"
-          )
-
-          return {
-            ...driver.toObject(),
-            distance: {
-              text: distanceData.distance.text, // "3.2 km"
-              value: distanceData.distance.value, // 3200 meters
-              km: Math.round(distanceData.distance.value / 10) / 100, // 3.2
-            },
-            estimatedArrival: {
-              text: distanceData.duration.text, // "12 mins" 
-              value: distanceData.duration.value, // 720 seconds
-              minutes: Math.ceil(distanceData.duration.value / 60), // 12
-            },
-          }
-        } catch (error) {
-          console.warn(`Failed to get accurate distance for driver ${driver._id}, using fallback:`, error.message)
-          
-          // Fallback to Haversine calculation if Google API fails
-          const R = 6371 // Earth's radius in km
-          const dLat = ((driverLat - latitude) * Math.PI) / 180
-          const dLng = ((driverLng - longitude) * Math.PI) / 180
-          const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos((latitude * Math.PI) / 180) *
-              Math.cos((driverLat * Math.PI) / 180) *
-              Math.sin(dLng / 2) *
-              Math.sin(dLng / 2)
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-          const distance = R * c
-
-          return {
-            ...driver.toObject(),
-            distance: {
-              text: `${Math.round(distance * 100) / 100} km`,
-              value: distance * 1000, // meters
-              km: Math.round(distance * 100) / 100,
-            },
-            estimatedArrival: {
-              text: `${Math.ceil(distance * 2)} min`,
-              value: Math.ceil(distance * 2) * 60, // seconds
-              minutes: Math.ceil(distance * 2),
-            },
-          }
-        }
-      })
-    )
-
-    // Sort by distance (closest drivers first)
-    driversWithDistance.sort((a, b) => a.distance.value - b.distance.value)
+    const rate = fareRates[vehicleType] || fareRates.auto;
+    const baseFare = rate.base + distanceKm * rate.perKm + durationMin * rate.perMin;
+    const estimatedFare = Math.round(baseFare * rate.surge);
 
     res.json({
       success: true,
       data: {
-        drivers: driversWithDistance,
-        count: driversWithDistance.length,
+        estimatedFare,
+        fareRange: { min: Math.round(estimatedFare * 0.9), max: Math.round(estimatedFare * 1.1) },
+        distance: { text: distanceData.distance.text, value: distanceData.distance.value, km: Math.round(distanceKm * 100) / 100 },
+        duration: { text: distanceData.duration.text, value: distanceData.duration.value, minutes: Math.ceil(durationMin) },
+        vehicleType,
+        surgeMultiplier: rate.surge,
       },
-    })
+    });
   } catch (error) {
-    console.error("Find nearby drivers error:", error)
-    res.status(500).json({
-      success: false,
-      message: "Failed to find nearby drivers",
-    })
+    console.error("Fare estimation error:", error);
+    res.status(500).json({ success: false, message: "Failed to estimate fare" });
   }
-})
+});
 
+// ===========================================
+// 4. FIND NEARBY DRIVERS
+// ===========================================
 
-//Request a ride with REAL Google Maps distance and fare calculation
-
-router.post("/rides/request", async (req, res) => {
+router.get("/ride/nearby-drivers", auth, async (req, res) => {
   try {
-    const { pickup, destination, vehicleType, serviceType = "ride", offeredFare, paymentMethod = "cash", userId } = req.body
+    const { latitude, longitude, radius = 5000, serviceType, vehicleType, destinationLat, destinationLng } = req.query;
 
-    if (!pickup || !destination || !vehicleType || !userId) {
-      return res.status(400).json({
-        success: false,
-        message: "Pickup, destination, vehicle type, and userId are required",
-      })
+    if (!latitude || !longitude || !serviceType || !destinationLat || !destinationLng) {
+      return res.status(400).json({ message: "latitude, longitude, serviceType, destinationLat, and destinationLng are required" });
     }
 
-    let distanceData, estimatedFare, distance, duration
+    const drivers = await Driver.find({
+      location: { $near: { $geometry: { type: "Point", coordinates: [parseFloat(longitude), parseFloat(latitude)] }, $maxDistance: parseInt(radius) } },
+      status: "online",
+      "availability.isAvailable": true,
+      services: serviceType,
+    })
+      .limit(20)
+      .lean();
 
+    if (!drivers.length) return res.json([]);
+
+    const driverIds = drivers.map(d => d._id);
+    const vehicles = await Vehicle.find({ driver: { $in: driverIds } }).lean();
+
+    const fareRates = {
+      bike: { base: 20, perKm: 8, perMin: 1, surge: 1.0 },
+      auto: { base: 30, perKm: 12, perMin: 1.5, surge: 1.0 },
+      car: { base: 50, perKm: 15, perMin: 2, surge: 1.0 },
+    };
+
+    const driverResults = await Promise.all(drivers.map(async driver => {
+      const vehicle = vehicles.find(v => v.driver.toString() === driver._id.toString());
+      if (vehicleType && vehicle?.vehicle?.type !== vehicleType) return null;
+
+      let etaData = null;
+      try {
+        etaData = await GoogleMapsService.calculateDistance(
+          { lat: driver.location.coordinates[1], lng: driver.location.coordinates[0] },
+          { lat: parseFloat(latitude), lng: parseFloat(longitude) },
+          "driving"
+        );
+      } catch (err) { console.warn("ETA calculation failed for driver:", driver._id, err.message); }
+
+      let fareEstimate = null;
+      try {
+        const distData = await GoogleMapsService.calculateDistance(
+          { lat: parseFloat(latitude), lng: parseFloat(longitude) },
+          { lat: parseFloat(destinationLat), lng: parseFloat(destinationLng) },
+          "driving"
+        );
+
+        const distanceKm = distData.distance.value / 1000;
+        const durationMin = distData.duration.value / 60;
+        const rate = fareRates[vehicleType || "auto"];
+        fareEstimate = Math.round((rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) * rate.surge);
+      } catch (err) { console.warn("Fare calculation failed for driver:", driver._id, err.message); }
+
+      return {
+        _id: driver._id,
+        name: driver.name,
+        phone: driver.phone,
+        profileImage: driver.profileImage,
+        rating: driver.rating,
+        location: { lat: driver.location.coordinates[1], lng: driver.location.coordinates[0], address: driver.location.address },
+        vehicle: vehicle?.vehicle || null,
+        vehicleVerification: vehicle?.verificationStatus || "pending",
+        estimatedFare: fareEstimate,
+        eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
+      };
+    }));
+
+    res.json(driverResults.filter(Boolean));
+  } catch (error) {
+    console.error("Error fetching nearby drivers:", error);
+    res.status(500).json({ message: "Failed to fetch nearby drivers" });
+  }
+});
+
+// ===========================================
+// 5. REQUEST RIDE
+// ===========================================
+
+router.post("/ride/request", async (req, res) => {
+  try {
+    const { pickup, destination, driverId, vehicleType, serviceType = "ride", offeredFare, paymentMethod = "cash", userId, rideNotes } = req.body;
+    if (!pickup || !destination || !driverId || !vehicleType || !userId) return res.status(400).json({ success: false, message: "Pickup, destination, driver, vehicle type, and userId are required" });
+
+    const driver = await Driver.findById(driverId);
+    if (!driver || !driver.availability.isAvailable || driver.status !== "online") return res.status(400).json({ success: false, message: "Driver is no longer available" });
+
+    let distanceData, estimatedFare, distance, duration;
     try {
-      // Calculate REAL distance and duration using Google Distance Matrix API
-      distanceData = await GoogleMapsService.calculateDistance(
-        { lat: pickup.latitude, lng: pickup.longitude },
-        { lat: destination.latitude, lng: destination.longitude },
-        "driving"
-      )
+      distanceData = await GoogleMapsService.calculateDistance({ lat: pickup.latitude, lng: pickup.longitude }, { lat: destination.latitude, lng: destination.longitude }, "driving");
+      distance = distanceData.distance.value / 1000;
+      duration = distanceData.duration.value / 60;
 
-      distance = distanceData.distance.value / 1000 // Convert meters to km
-      duration = distanceData.duration.value / 60 // Convert seconds to minutes
-
-      // Calculate accurate fare based on vehicle type and REAL distance
-      const baseFare = vehicleType === "bike" ? 20 : vehicleType === "auto" ? 30 : 50
-      const perKmRate = vehicleType === "bike" ? 8 : vehicleType === "auto" ? 12 : 15
-      estimatedFare = Math.round(baseFare + distance * perKmRate)
+      const fareRates = { bike: { base: 20, perKm: 8 }, auto: { base: 30, perKm: 12 }, car: { base: 50, perKm: 15 } };
+      const rate = fareRates[vehicleType] || fareRates.auto;
+      estimatedFare = Math.round(rate.base + distance * rate.perKm);
     } catch (error) {
-      console.warn("Failed to get accurate distance from Google, using fallback calculation:", error.message)
-      
-      // Fallback calculation if Google API fails
-      const R = 6371 // Earth's radius in km
-      const dLat = ((pickup.latitude - destination.latitude) * Math.PI) / 180
-      const dLng = ((pickup.longitude - destination.longitude) * Math.PI) / 180
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((pickup.latitude * Math.PI) / 180) *
-          Math.cos((destination.latitude * Math.PI) / 180) *
-          Math.sin(dLng / 2) *
-          Math.sin(dLng / 2)
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-      distance = R * c
-      duration = distance * 3 // 3 minutes per km estimate
-      
-      const baseFare = vehicleType === "bike" ? 20 : vehicleType === "auto" ? 30 : 50
-      estimatedFare = Math.round(baseFare + distance * 8)
+      distance = 5; duration = 15;
+      estimatedFare = vehicleType === "bike" ? 60 : vehicleType === "auto" ? 80 : 120;
     }
 
-    // Create ride request with accurate data
     const ride = new Ride({
       user: userId,
+      driver: driverId,
       pickup,
       destination,
       serviceType,
       vehicleType,
-      fare: {
-        estimated: estimatedFare,
-        offered: offeredFare || estimatedFare,
-      },
-      distance: {
-        estimated: Math.round(distance * 100) / 100, // km
-        text: distanceData?.distance.text || `${Math.round(distance * 100) / 100} km`,
-        value: distanceData?.distance.value || Math.round(distance * 1000), // meters
-      },
-      duration: {
-        estimated: Math.ceil(duration), // minutes
-        text: distanceData?.duration.text || `${Math.ceil(duration)} min`,
-        value: distanceData?.duration.value || Math.ceil(duration * 60), // seconds
-      },
+      fare: { estimated: estimatedFare, offered: offeredFare || estimatedFare, final: null },
+      distance: { estimated: Math.round(distance * 100) / 100, text: distanceData?.distance.text || `${Math.round(distance)} km`, value: distanceData?.distance.value || Math.round(distance * 1000) },
+      duration: { estimated: Math.ceil(duration), text: distanceData?.duration.text || `${Math.ceil(duration)} min`, value: distanceData?.duration.value || Math.ceil(duration * 60) },
       paymentMethod,
-    })
+      rideNotes: rideNotes || "",
+      status: "requested",
+      requestedAt: new Date(),
+    });
 
-    await ride.save()
+    await ride.save();
+    await ride.populate("driver", "name phone vehicle rating");
 
-    res.status(201).json({
-      success: true,
-      message: "Ride requested successfully",
-      data: ride,
-    })
+    res.status(201).json({ success: true, message: "Ride requested successfully", data: { rideId: ride._id, status: ride.status, driver: ride.driver, pickup: ride.pickup, destination: ride.destination, fare: ride.fare, distance: ride.distance, duration: ride.duration, estimatedArrival: null } });
   } catch (error) {
-    console.error("Ride request error:", error)
-    res.status(500).json({
-      success: false,
-      message: "Failed to request ride",
-    })
+    console.error("Ride request error:", error);
+    res.status(500).json({ success: false, message: "Failed to request ride" });
   }
-})
+});
 
-// Get user's active rides
+// ===========================================
+// 6. GET ACTIVE RIDE
+// ===========================================
 
-router.get("/rides/active", async (req, res) => {
+router.get("/ride/active", async (req, res) => {
   try {
-    const { userId } = req.query
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ success: false, message: "UserId is required" });
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "UserId is required",
-      })
+    const activeRide = await Ride.findOne({ user: userId, status: { $in: ["requested", "accepted", "arriving", "arrived", "pickup", "in_progress"] } })
+      .populate("driver", "name phone vehicle location rating profileImage")
+      .sort({ createdAt: -1 });
+
+    if (!activeRide) return res.json({ success: true, data: null, message: "No active ride found" });
+
+    let driverETA = null;
+    if (["accepted", "arriving"].includes(activeRide.status) && activeRide.driver?.location?.coordinates) {
+      try {
+        const [lng, lat] = activeRide.driver.location.coordinates;
+        const etaData = await GoogleMapsService.calculateDistance({ lat, lng }, { lat: activeRide.pickup.latitude, lng: activeRide.pickup.longitude }, "driving");
+        driverETA = { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) };
+      } catch (error) { console.warn("Failed to calculate driver ETA:", error.message); }
     }
 
-    const activeRides = await Ride.find({
-      user: userId,
-      status: { $in: ["requested", "accepted", "driver_assigned", "pickup", "in_progress"] },
-    })
-      .populate("driver", "name phone vehicle location rating")
-      .sort({ createdAt: -1 })
-
-    res.json({
-      success: true,
-      data: activeRides,
-    })
+    res.json({ success: true, data: { rideId: activeRide._id, status: activeRide.status, driver: activeRide.driver, pickup: activeRide.pickup, destination: activeRide.destination, fare: activeRide.fare, distance: activeRide.distance, duration: activeRide.duration, paymentMethod: activeRide.paymentMethod, driverETA } });
   } catch (error) {
-    console.error("Get active rides error:", error)
-    res.status(500).json({
-      success: false,
-      message: "Failed to get active rides",
-    })
+    console.error("Get active ride error:", error);
+    res.status(500).json({ success: false, message: "Failed to get active ride" });
   }
-})
+});
 
-module.exports = router
+// ===========================================
+// 7. CANCEL RIDE
+// ===========================================
+
+router.patch("/ride/:rideId/cancel", async (req, res) => {
+  try {
+    const { rideId } = req.params;
+    const { reason, userId } = req.body;
+
+    const ride = await Ride.findById(rideId);
+    if (!ride) return res.status(404).json({ success: false, message: "Ride not found" });
+    if (ride.user.toString() !== userId) return res.status(403).json({ success: false, message: "Unauthorized" });
+
+    const cancellableStatuses = ["requested", "accepted", "arriving"];
+    if (!cancellableStatuses.includes(ride.status)) return res.status(400).json({ success: false, message: "Ride cannot be cancelled now" });
+
+    const CANCELLATION_FEE = 25;
+    ride.status = "cancelled";
+    ride.cancellationReason = reason;
+    ride.cancellationFee = CANCELLATION_FEE;
+    ride.cancelledAt = new Date();
+    await ride.save();
+
+    if (ride.driver) await Driver.findByIdAndUpdate(ride.driver, { "availability.isAvailable": true });
+
+    res.json({ success: true, message: "Ride cancelled", data: { rideId: ride._id, status: ride.status, cancellationFee: CANCELLATION_FEE, refundAmount: Math.max(0, ride.fare.offered - CANCELLATION_FEE) } });
+  } catch (error) {
+    console.error("Cancel ride error:", error);
+    res.status(500).json({ success: false, message: "Failed to cancel ride" });
+  }
+});
+
+// ===========================================
+// 8. GET RIDE HISTORY
+// ===========================================
+
+router.get("/ride/history", async (req, res) => {
+  try {
+    const { userId, page = 1, limit = 10, status } = req.query;
+    if (!userId) return res.status(400).json({ success: false, message: "UserId is required" });
+
+    const query = { user: userId };
+    if (status) query.status = status; else query.status = { $in: ["completed", "cancelled"] };
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const rides = await Ride.find(query).populate("driver", "name phone vehicle rating").sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit));
+    const totalRides = await Ride.countDocuments(query);
+
+    const ridesWithDetails = rides.map(ride => ({
+      rideId: ride._id,
+      status: ride.status,
+      driver: ride.driver,
+      pickup: ride.pickup,
+      destination: ride.destination,
+      fare: { final: ride.fare.final || ride.fare.offered, paymentMethod: ride.paymentMethod },
+      distance: ride.distance,
+      duration: ride.duration,
+      date: ride.createdAt,
+      completedAt: ride.completedAt,
+      cancelledAt: ride.cancelledAt,
+      cancellationReason: ride.cancellationReason,
+    }));
+
+    res.json({ success: true, data: { rides: ridesWithDetails, pagination: { currentPage: parseInt(page), totalPages: Math.ceil(totalRides / parseInt(limit)), totalRides } } });
+  } catch (error) {
+    console.error("Get ride history error:", error);
+    res.status(500).json({ success: false, message: "Failed to get ride history" });
+  }
+});
+
+module.exports = router;
