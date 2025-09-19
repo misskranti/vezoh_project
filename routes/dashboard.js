@@ -166,7 +166,7 @@ router.get("/ride/nearby-drivers", auth, async (req, res) => {
         rating: driver.rating,
         location: { lat: driver.location.coordinates[1], lng: driver.location.coordinates[0], address: driver.location.address },
         vehicle: vehicle?.vehicle || null,
-        vehicleVerification: vehicle?.verificationStatus || "pending",
+        vehicleVerification: vehicle?.verificationStatus, //|| "pending",
         estimatedFare: fareEstimate,
         eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
       };
