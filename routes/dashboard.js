@@ -180,8 +180,8 @@ router.get("/ride/nearby-drivers", auth, async (req, res) => {
 });
 
 // =========================================== 
-// 5. REQUEST RIDE
-// ===========================================
+// 5. REQUEST RIDE 
+// =========================================== 
 
 router.post("/ride/request", async (req, res) => {
   try {
