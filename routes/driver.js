@@ -49,31 +49,7 @@ router.get("/dashboard", auth, driverdashboard);
 router.patch(
   "/status-update",
   auth,
-  body("action")
-    .trim()
-    .notEmpty()
-    .withMessage("action is required")
-    .bail()
-    .isInt({ min: 0, max: 1 })
-    .withMessage("Invalid action")
-    .bail(),
-  body("lat")
-    .trim()
-    .notEmpty()
-    .withMessage("latitude is required")
-    .bail()
-    .isFloat()
-    .withMessage("Invalid latitude")
-    .bail(),
-  body("lon")
-    .trim()
-    .notEmpty()
-    .withMessage("longitude is required")
-    .bail()
-    .isFloat()
-    .withMessage("Invalid longitude")
-    .bail(),
-  throwError,
+  
   statusUpdate
 );
 

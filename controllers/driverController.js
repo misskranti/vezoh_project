@@ -66,33 +66,26 @@ exports.statusUpdate = async (req, res) => {
   try {
     const { action, lat, lon } = req.body;
 
-    let status;
-    switch (+action) {
-      case 0:
-        status = "offline";
-        break;
-      case 1:
-        status = "online";
-        break;
-    }
+  
+    let status = action === 1 ? "online" : "offline";
 
+    
     const updateLocation = await Driver.findByIdAndUpdate(
       req.user._id,
       {
         $set: {
-          "location.coordinates": {
-            latitude: lat,
-            longitude: lon,
-          },
+          "location.coordinates": [Number(lon), Number(lat)], // [longitude, latitude]
+          "location.lastUpdated": new Date(),
           status: status,
         },
       },
       { new: true }
     );
-    return res.status(201).json({
+
+    return res.status(200).json({
       success: true,
       message: "Status updated successfully",
-      // data: updateLocation,
+      //data: updateLocation,
     });
   } catch (err) {
     return res.status(500).json({
