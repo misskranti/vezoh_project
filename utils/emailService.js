@@ -14,7 +14,7 @@ const sendEmailVerificationOTP = async (email, otp, userName = "User") => {
   try {
     console.log(`[DEBUG] sendEmailVerificationOTP called for ${email} with OTP ${otp}`);
 
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) { 
       console.error("[EMAIL ERROR] Missing EMAIL_USER or EMAIL_PASS in .env");
       console.log(`[MOCK EMAIL] OTP ${otp} would be sent to ${email}`);
       return false;
