@@ -36,48 +36,6 @@ const driverSchema = new mongoose.Schema(
     loginOtpExpiry: { type: Date, default: null },
     loginOtpVerified: { type: Boolean, default: false },
 
-    // documents: { // shifted in vehicle model
-    //   drivingLicense: {
-    //     number: String,
-    //     frontImage: String,
-    //     backImage: String,
-    //     expiryDate: Date,
-    //     isVerified: { type: Boolean, default: false },
-    //   },
-    //   vehicleRegistration: {
-    //     number: String,
-    //     image: String,
-    //     expiryDate: Date,
-    //     isVerified: { type: Boolean, default: false },
-    //   },
-    //   insurance: {
-    //     number: String,
-    //     image: String,
-    //     expiryDate: Date,
-    //     isVerified: { type: Boolean, default: false },
-    //   },
-    //   aadhar: {
-    //     number: String,
-    //     frontImage: String,
-    //     backImage: String,
-    //     isVerified: { type: Boolean, default: false },
-    //   },
-    // },
-    // vehicle: { // shifted in vehicle model
-    //   type: {
-    //     type: String,
-    //     enum: ["bike", "auto", "car", "truck"],
-    //   },
-    //   make: String,
-    //   model: String,
-    //   year: Number,
-    //   color: String,
-    //   plateNumber: String,
-    //   capacity: {
-    //     passengers: Number,
-    //     weight: Number,
-    //   },
-    // },
     services: [
       {
         type: String,
@@ -91,7 +49,7 @@ const driverSchema = new mongoose.Schema(
         default: "Point",
       },
       coordinates: {
-        type: [Number], // [longitude, latitude]
+        type: [Number],
         required: true,
         default: [0, 0],
       },

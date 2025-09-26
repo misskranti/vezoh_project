@@ -27,11 +27,6 @@ const vehicleSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    // documents: {
-    //   drivingLicense: { type: String },
-    //   rcCertificate: { type: String },
-    //   vehicleInsurance: { type: String },
-    // },
     documents: {
       drivingLicense: {
         number: String,
@@ -59,11 +54,6 @@ const vehicleSchema = new mongoose.Schema(
         isVerified: { type: Boolean, default: false },
       },
     },
-    // status: {
-    //   type: String,
-    //   enum: ["Pending", "Verified", "Rejected"],
-    //   default: "Pending",
-    // },
     verificationStatus: {
       type: String,
       enum: ["under_review", "approved", "rejected"],//pending

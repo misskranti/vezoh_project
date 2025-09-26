@@ -1,12 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const Driver = require("../models/driver");
-const {
-  generateOTP,
-  formatPhoneNumber,
-  isValidEmail,
-  isValidPhone,
-} = require("../utils/helpers");
+const {generateOTP,formatPhoneNumber,isValidEmail,isValidPhone} = require("../utils/helpers");
 const { sendEmailVerificationOTP } = require("../utils/emailService");
 
 const generateToken = (id, role) => {
@@ -208,7 +203,7 @@ exports.loginDriver = async (req, res) => {
     ) {
       otp = generateOTP().toString();
       driver.loginVerificationCode = otp;
-      driver.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      driver.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
       driver.loginOtpVerified = false;
       await driver.save();
       console.log(`[LOGIN] Generated new OTP for ${driver.email}: ${otp}`);
@@ -319,7 +314,6 @@ exports.verifyUserEmailOtp = async (req, res) => {
   }
 };
 
-
 //  Verify Email OTP for Drivers
 exports.verifyDriverEmailOtp = async (req, res) => {
   try {
@@ -412,8 +406,6 @@ exports.verifyDriverEmailOtp = async (req, res) => {
   }
 };
 
-
-
 // ---------------------- RESEND EMAIL OTP ----------------------
 
 exports.resendUserEmailOtp = async (req, res) => {
@@ -483,7 +475,6 @@ exports.resendUserEmailOtp = async (req, res) => {
   }
 };
 
-
 exports.resendDriverEmailOtp = async (req, res) => {
   try {
     const { email, type } = req.body;
@@ -550,6 +541,7 @@ exports.resendDriverEmailOtp = async (req, res) => {
     });
   }
 };
+
 // ---------------------- GET PROFILE ----------------------
 
 exports.getProfile = async (req, res) => {

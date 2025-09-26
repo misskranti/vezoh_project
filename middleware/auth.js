@@ -47,7 +47,6 @@ const auth = async (req, res, next) => {
 
       const driver = await Driver.findById(decoded.id).select("-password")
 
-      // console.log("kkkkkkkkk===>", driver)
       if (!driver) {
         return res.status(401).json({
           success: false,

@@ -2,6 +2,7 @@ const Service = require("../models/service.js");
 // const Driver = require("../models/driver.js");
 
 // --------------------------------System Add Services--------------------------------//
+
 exports.addServices = async (req, res) => {
   try {
     await Service.deleteMany({});
@@ -20,6 +21,7 @@ exports.addServices = async (req, res) => {
 };
 
 //-------------------------------Available Services ----------------------------------//
+
 exports.servicesList = async (req, res) => {
   try {
     const services = await Service.find({ active: true })
@@ -43,6 +45,7 @@ exports.servicesList = async (req, res) => {
 };
 
 //------------------------------Particular Service Details----------------------------//
+
 exports.particularService = async (req, res) => {
   try {
     const { service } = req.params;

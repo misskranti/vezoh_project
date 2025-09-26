@@ -43,11 +43,11 @@ const rideSchema = new mongoose.Schema(
       final: Number,
     },
     distance: {
-      estimated: Number, // in km
+      estimated: Number,
       actual: Number,
     },
     duration: {
-      estimated: Number, // in minutes
+      estimated: Number, 
       actual: Number,
     },
     status: {

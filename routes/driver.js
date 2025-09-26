@@ -2,16 +2,9 @@ const express = require("express");
 const router = express.Router();
 const { auth } = require("../middleware/auth.js");
 const { param, body } = require("express-validator");
-const {
-  driverOptServices,
-  
-  selectedServices,statusUpdate,
-  driverdashboard
+const {driverOptServices,selectedServices,statusUpdate,driverdashboard,incomingrequest} = require("../controllers/driverController.js");
 
-} = require("../controllers/driverController.js");
-
-const {vehicleRegistration
-} = require("../controllers/vehicleController.js");
+const {vehicleRegistration} = require("../controllers/vehicleController.js");
 
 const { driverDocuments, handleUploadErrors } = require("../middleware/upload");
 
@@ -52,8 +45,6 @@ router.patch(
   
   statusUpdate
 );
-
-
-
+router.get("/incoming/:driverId", auth, incomingrequest);
 
 module.exports = router;

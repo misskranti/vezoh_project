@@ -1,7 +1,9 @@
 const Driver = require("../models/driver.js");
 const Vehicle = require("../models/vehicle.js");
+const Ride = require("../models/ride.js");
 
 //-------------------------- Driver Opt Services -----------------------------------------//
+
 exports.driverOptServices = async (req, res) => {
   try {
     const { services } = req.body;
@@ -34,12 +36,12 @@ exports.driverOptServices = async (req, res) => {
 };
 
 //--------------------------Selected Services---------------------------------------------//
+
 exports.selectedServices = async (req, res) => {
   try {
     const fetchDetails = await Vehicle.findOne({ driver: req.user._id }).select(
       { verificationStatus: 1, driver: 1 }
     );
-    //   .populate("driver", "_id services"); // No need because driver's whole document is stored in req object
 
     return res.status(200).json({
       success: true,
@@ -62,6 +64,7 @@ exports.selectedServices = async (req, res) => {
 };
 
 //-------------------------- Driver Online/Offline Status Update -----------------------------------------//
+
 exports.statusUpdate = async (req, res) => {
   try {
     const { action, lat, lon } = req.body;
@@ -74,7 +77,7 @@ exports.statusUpdate = async (req, res) => {
       req.user._id,
       {
         $set: {
-          "location.coordinates": [Number(lon), Number(lat)], // [longitude, latitude]
+          "location.coordinates": [Number(lon), Number(lat)],
           "location.lastUpdated": new Date(),
           status: status,
         },
@@ -150,5 +153,42 @@ exports.driverdashboard = async (req, res) => {
       success: false,
       message: "Server error while fetching dashboard",
     });
+  }
+};
+
+//--------------------------Incoming Request---------------------------------------------//
+
+exports.incomingrequest = async (req, res) => {
+  try {
+    const { driverId } = req.params;
+
+    const driver = await Driver.findById(driverId);
+    if (!driver) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+
+    if (driver.status !== "online") {
+      return res.status(400).json({ success: false, message: "Driver is not online" });
+    }
+
+    const rides = await Ride.find({
+      status: "requested",
+      serviceType: { $in: driver.services },
+      "pickup.coordinates": {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: driver.location.coordinates,
+          },
+          $maxDistance: 5000,
+        },
+      },
+    })
+      .populate("user", "name phone profileImage")
+      .lean();
+
+    res.json({ success: true, rides });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };

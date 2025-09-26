@@ -3,6 +3,7 @@ const Driver = require("../models/driver.js");
 const Vehicle = require("../models/vehicle.js");
 
 // ----------------------- Driver Vehicle Registration------------------------------------//
+
 exports.vehicleRegistration = async (req, res) => {
     try {
         const { driverId, vehicleType, vehicleNumber, ownerName } = req.body;
