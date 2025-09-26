@@ -59,7 +59,7 @@ exports.registerUser = async (req, res) => {
       message:
         "User registered successfully. Please check your email for the verification code.",
      // data: { id: user._id.toString() },
-      data: { id: user._id.toString(), otp },
+      data: { id: user._id.toString() },
     });
   } catch (err) {
     console.error(err);
