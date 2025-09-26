@@ -58,7 +58,8 @@ exports.registerUser = async (req, res) => {
       success: true,
       message:
         "User registered successfully. Please check your email for the verification code.",
-      data: { id: user._id.toString() },
+     // data: { id: user._id.toString() },
+      data: { id: user._id.toString(), otp },
     });
   } catch (err) {
     console.error(err);
@@ -121,7 +122,7 @@ exports.registerDriver = async (req, res) => {
       success: true,
       message:
         "Driver registered successfully. Please check your email for the verification code.",
-      data: { id: driver._id.toString() },
+      data: { id: driver._id.toString(),otp },
     });
   } catch (err) {
     console.error(err);
