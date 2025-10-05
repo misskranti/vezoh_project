@@ -114,4 +114,4 @@ exports.vehicleRegistration = async (req, res) => {
             message: "Vehicle registration failed. Please try again.",
         });
     }
-};
+}; 
