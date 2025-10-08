@@ -1,0 +1,275 @@
+const jwt = require("jsonwebtoken");
+const User = require("../models/user");
+const Driver = require("../models/driver");
+const {generateOTP,formatPhoneNumber,isValidEmail,isValidPhone} = require("../utils/helpers");
+const { sendEmailVerificationOTP } = require("../utils/emailService");
+
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "30d" });
+};
+
+// ---------------------- REGISTER USER ----------------------
+
+exports.registerUser = async (req, res) => {
+  try {
+    const { name, email, phone } = req.body;
+    if (!name || !email || !phone)
+      return res.status(400).json({
+        success: false,
+        message: "Please provide all required fields",
+      });
+    if (!isValidEmail(email))
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address",
+      });
+    if (!isValidPhone(phone))
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid phone number",
+      });
+
+    const formattedPhone = formatPhoneNumber(phone);
+
+    const existingUser = await User.findOne({
+      $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }],
+    });
+    if (existingUser)
+      return res.status(400).json({
+        success: false,
+        message: "User already exists with this email or phone number.",
+      });
+
+    const otp = generateOTP().toString();
+    const user = new User({
+      name: name.trim(),
+      email: email.toLowerCase(),
+      phone: formattedPhone,
+      verificationCode: otp,
+      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
+      isVerified: false,
+    });
+
+    await user.save();
+
+    await sendEmailVerificationOTP(user.email, otp, user.name);
+
+    return res.status(201).json({
+      success: true,
+      message:
+        "User registered successfully. Please check your email for the verification code.",
+      data: { id: user._id.toString() },
+    });
+  } catch (err) {
+    console.error(err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error during registration" });
+  }
+};
+
+// ---------------------- LOGIN USER ---------------------------
+
+exports.loginUser = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email)
+      return res
+        .status(400)
+        .json({ success: false, message: "Email required" });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user)
+      return res
+        .status(400)
+        .json({ success: false, message: "User not found" });
+
+    const now = new Date();
+    let otp;
+
+    if (
+      !user.loginVerificationCode ||
+      user.loginOtpExpiry < now ||
+      user.loginOtpVerified
+    ) {
+      otp = generateOTP().toString();
+      user.loginVerificationCode = otp;
+      user.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      user.loginOtpVerified = false;
+      await user.save();
+      console.log(`[LOGIN] Generated new OTP for ${user.email}: ${otp}`);
+    } else {
+      otp = user.loginVerificationCode;
+      console.log(`[LOGIN] Reusing OTP for ${user.email}: ${otp}`);
+    }
+
+    await sendEmailVerificationOTP(user.email, otp, user.name);
+
+    res.json({ success: true, message: "Login OTP sent to your email" });
+  } catch (err) {
+    console.error(err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error during login" });
+  }
+};
+
+// ---------------------- VERIFY EMAIL OTP ----------------------
+
+exports.verifyUserEmailOtp = async (req, res) => {
+  try {
+    const { email, otp, type } = req.body;
+    if (!email || !otp || !type) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide email, otp, and type",
+      });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    let token = "";
+
+    if (type === "registration") {
+      if (!user.verificationCode || user.isVerified) {
+        return res.status(400).json({
+          success: false,
+          message: "Email already verified or OTP not found",
+        });
+      }
+
+      if (
+        user.verificationCode.toString() !== otp.toString() ||
+        !user.otpExpiry ||
+        user.otpExpiry < new Date()
+      ) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid or expired OTP" });
+      }
+      token = generateToken(user._id, "user");
+      user.isVerified = true;
+      user.verificationCode = null;
+      user.otpExpiry = null;
+      user.userToken = token;
+      await user.save();
+
+      return res.json({
+        success: true,
+        message: "User email verified successfully",
+        data: { id: user._id.toString(), token },
+      });
+    }
+
+    if (type === "login") {
+      if (!user.loginVerificationCode || user.loginOtpVerified) {
+        return res.status(400).json({
+          success: false,
+          message: "No pending login verification found",
+        });
+      }
+
+      if (
+        user.loginVerificationCode.toString() !== otp.toString() ||
+        !user.loginOtpExpiry ||
+        user.loginOtpExpiry < new Date()
+      ) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid or expired OTP" });
+      }
+      token = generateToken(user._id, "user");
+      user.loginOtpVerified = true;
+      user.loginVerificationCode = null;
+      user.loginOtpExpiry = null;
+      user.userToken = token;
+      await user.save();
+
+
+      return res.json({
+        success: true,
+        message: "User login verified successfully",
+        data: { id: user._id.toString(), token },
+      });
+    }
+  } catch (err) {
+    console.error("User OTP verification error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error during User OTP verification",
+    });
+  }
+};
+
+// ---------------------- RESEND EMAIL OTP ----------------------
+
+exports.resendUserEmailOtp = async (req, res) => {
+  try {
+    const { email, type } = req.body;
+    if (!email || !type) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide email and type",
+      });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (type === "registration") {
+      if (user.isVerified) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Email already verified" });
+      }
+
+      const otp = generateOTP().toString();
+      user.verificationCode = otp;
+      user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save();
+
+      await sendEmailVerificationOTP(user.email, otp, user.name);
+
+      return res.json({
+        success: true,
+        message: "Registration OTP resent successfully",
+      });
+    }
+
+    if (type === "login") {
+      if (user.loginOtpVerified) {
+        return res.status(400).json({
+          success: false,
+          message: "OTP already verified. You're logged in.",
+        });
+      }
+
+      const otp = generateOTP().toString();
+      user.loginVerificationCode = otp;
+      user.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      user.loginOtpVerified = false;
+      await user.save();
+
+      await sendEmailVerificationOTP(user.email, otp, user.name);
+
+      return res.json({
+        success: true,
+        message: "Login OTP resent successfully",
+      });
+    }
+
+    return res.status(400).json({ success: false, message: "Invalid type" });
+  } catch (err) {
+    console.error("resendUserEmailOtp error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error during resend OTP",
+    });
+  }
+};
+

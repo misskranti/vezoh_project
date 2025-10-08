@@ -5,31 +5,32 @@ const cors = require("cors");
 const http = require("http");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
-const authRoutes = require("./routes/auth.js");
-const dashboardRoutes = require("./routes/dashboard.js");
-const serviceRoutes = require("./routes/services.js");
-const driverRoutes = require("./routes/driver.js");
+// Routes
+const userRoutes = require("./routes/customerRoutes.js");
+const driverRoutes = require("./routes/driverRoutes.js");
 
 const app = express();
 const server = http.createServer(app);
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Database connection
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected successfully"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
-app.use("/api/auth", authRoutes);     
-app.use("/api/dashboard", dashboardRoutes); 
-app.use("/api", serviceRoutes);
+// ============================
+// API Routes
+// ============================
+
+app.use("/api/user", userRoutes);
 app.use("/api/driver", driverRoutes);
 
+// Root route
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -37,6 +38,7 @@ app.get("/", (req, res) => {
   });
 });
 
+// Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({
