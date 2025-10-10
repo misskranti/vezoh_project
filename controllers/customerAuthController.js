@@ -272,4 +272,3 @@ exports.resendUserEmailOtp = async (req, res) => {
     });
   }
 };
-

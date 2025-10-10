@@ -42,6 +42,10 @@ const rideSchema = new mongoose.Schema(
       offered: Number,
       final: Number,
     },
+    cancellationFee:{
+      type: Number,
+      default:0
+    },
     distance: {
       estimated: Number,
       actual: Number,
@@ -55,9 +59,13 @@ const rideSchema = new mongoose.Schema(
       enum: ["requested", "accepted", "driver_assigned", "pickup", "in_progress", "completed", "cancelled"],
       default: "requested",
     },
+    OTPForStartRide:{
+      type:Number,
+      required:true
+    },
     paymentMethod: {
       type: String,
-      enum: ["cash", "card", "wallet"],
+      enum: ["cash", "card", "wallet", "UPI"],
       default: "cash",
     },
     paymentStatus: {
@@ -73,12 +81,12 @@ const rideSchema = new mongoose.Schema(
     },
     timeline: {
       requested: { type: Date, default: Date.now },
-      accepted: Date,
-      driverAssigned: Date,
-      pickup: Date,
-      started: Date,
-      completed: Date,
-      cancelled: Date,
+      acceptedAt: Date,
+      driverAssignedAt: Date,
+      pickupAt: Date,
+      startedAt: Date,
+      completedAt: Date,
+      cancelledAt: Date,
     },
   },
   {
