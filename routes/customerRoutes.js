@@ -78,7 +78,7 @@ router.post("/request", auth, createRide);
 router.get("/active", auth, activeRide);
 
 // Cancel Ride
-router.patch("/cancel/:rideId", auth, cancelRide);
+router.put("/cancel/:rideId", auth, cancelRide);
 
 // Complete Ride
 router.put("/rideCompleted/:rideId", auth, rideCompleted);
