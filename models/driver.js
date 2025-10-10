@@ -30,10 +30,6 @@ const driverSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-    driverToken:{
-     type:String,
-     default:""
-    },
     otpExpiry: { type: Date, default: null },
 
     loginVerificationCode: { type: String, default: null },

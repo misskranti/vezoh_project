@@ -26,10 +26,6 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    userToken:{
-     type:String,
-     default:""
-    },
 
     // Registration OTP
     verificationCode: { type: String, default: null },

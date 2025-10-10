@@ -1,7 +1,6 @@
 const axios = require("axios")
 
 class GoogleMapsService {
-
   // 1. PLACES API (New) - Autocomplete suggestions
   static async getAutocomplete(input, sessionToken = null, userLocation = null) {
     try {
@@ -209,7 +208,7 @@ class GoogleMapsService {
 
       const element = response.data.rows[0].elements[0]
 
-      if (element.status != "OK") {
+      if (element.status !== "OK") {
         throw new Error(`Unable to calculate distance: ${element.status}`)
       }
 
@@ -222,9 +221,6 @@ class GoogleMapsService {
           text: element.duration.text,
           value: element.duration.value,
         },
-          origin_addresses:response.data.destination_addresses[0] ,
-          destination_addresses: response.data.destination_addresses[0],
-      
         status: element.status,
       }
     } catch (error) {
@@ -232,7 +228,6 @@ class GoogleMapsService {
       throw new Error("Failed to calculate distance")
     }
   }
-  
 }
 
 module.exports = GoogleMapsService
