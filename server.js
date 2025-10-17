@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const http = require("http");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
+const { initializeSocket } = require('./socket');
 
 // Routes
 const userRoutes = require("./routes/customerRoutes.js");
@@ -11,6 +12,8 @@ const driverRoutes = require("./routes/driverRoutes.js");
 
 const app = express();
 const server = http.createServer(app);
+
+initializeSocket(server);
 
 // Middleware
 app.use(cors());

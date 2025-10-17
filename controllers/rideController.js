@@ -1,9 +1,11 @@
+const { validationResult } = require('express-validator');
 const Driver = require("../models/driver");
 const Vehicle = require("../models/vehicle.js");
 const Ride = require("../models/ride");
 const GoogleMapsService = require("../utils/googleMapsService");
 const{generateOTP} = require("../utils/helpers.js")
-
+const rideService = require('../middleware/services.js');
+const { sendMessageToSocketId } = require('../socket.js');
 
 // FIND NEARBY DRIVERS
 
@@ -141,25 +143,50 @@ exports.createRide = async (req, res) => {
     });
     const rideCreated = await Ride.create(ride);
     await rideCreated.populate("driver", "name phone vehicle rating");
+// not required if driver is not accepted the ride yet
+    // // 🔥 Send socket update to driver — new ride request
+    // if (driver.socketId) {
+    //   sendMessageToSocketId(driver.socketId, {
+    //     event: "new-ride-request",
+    //     data: {
+    //       rideId: rideCreated._id,
+    //       pickup: rideCreated.pickup,
+    //       destination: rideCreated.destination,
+    //       distance: rideCreated.distance,
+    //       duration: rideCreated.duration,
+    //       fare: rideCreated.fare,
+    //     },
+    //   });
+    // }
 
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Ride requested successfully",
-        data: {
-          rideId: rideCreated._id,
-          status: rideCreated.status,
-          OTPForStartRide: rideCreated.OTPForStartRide,
-          driver: rideCreated.driver,
-          pickup: rideCreated.pickup,
-          destination: rideCreated.destination,
-          fare: rideCreated.fare,
-          distance: rideCreated.distance,
-          duration: rideCreated.duration,
-          estimatedArrival: null,
-        },
-      });
+    // // 🔥 Optional: also notify user with driver distance
+    // // (for simplicity, we’ll just use same distance info)
+    // if (rideCreated.user?.socketId) {
+    //   sendMessageToSocketId(rideCreated.user.socketId, {
+    //     event: "driver-distance",
+    //     data: {
+    //       driverId: driver._id,
+    //       distance: rideCreated.distance,
+    //       duration: rideCreated.duration,
+    //     },
+    //   });
+    // }
+
+   return res.status(201).json({
+      success: true,
+      message: "Ride requested successfully",
+      data: {
+        rideId: rideCreated._id,
+        status: rideCreated.status,
+        OTPForStartRide: rideCreated.OTPForStartRide,
+        driver: rideCreated.driver,
+        pickup: rideCreated.pickup,
+        destination: rideCreated.destination,
+        fare: rideCreated.fare,
+        distance: rideCreated.distance,
+        duration: rideCreated.duration,
+      },
+    });
   } catch (error) {
     console.error("Ride request error:", error.message);
     res.status(500).json({ success: false, message: "Failed to request ride" });
@@ -192,6 +219,102 @@ exports.activeRide = async (req, res) => {
   } catch (error) {
     console.error("Get active ride error:", error);
     res.status(500).json({ success: false, message: "Failed to get active ride" });
+  }
+};
+
+
+// Confirm Ride
+
+exports.acceptedRideByDriver = async (req, res) => {
+    try {
+       const rideId = req.params.rideId
+       const { driverId, socketId } = req.body; //socketid of user for sending ride confired msg 
+       if(!rideId || !driverId) return res.status(400).json({status:false, message:"Ride d and Driver Id both are required"});
+
+      //  console.log(req.body,"===ride id ====>",rideId)
+        const rideConfirmed = await Ride.findOneAndUpdate({ _id:rideId, driver: driverId },{status: "accepted",}).populate('user');
+        
+        if(!rideConfirmed) return res.status(404).json({status:false,message:"Ride not found"});
+if(socketId){
+ sendMessageToSocketId(socketId, {
+            event: 'ride-confirmed',
+            data: rideConfirmed
+        })
+      }
+else{
+  sendMessageToSocketId(rideConfirmed.user.socketId, {
+            event: 'ride-confirmed',
+            data: rideConfirmed
+        })
+}
+
+       
+        return res.status(200).json(rideConfirmed);
+    } catch (err) {
+
+        console.log(err);
+        return res.status(500).json({ message: err.message });
+    }
+}
+//Start ride after getting confirmation with Driver using otp
+
+exports.startRide = async (req, res) => {
+  try {
+    const { rideId, otp, driverId, socketId } = req.body;
+    const ride = await rideService.startRide({ rideId, otp, driverId });
+
+    console.log(ride);
+
+    if (socketId) {
+      // If client provided socketId, send message to that socket
+      sendMessageToSocketId(socketId, {
+        event: 'ride-started',
+        data: ride
+      });
+    } else {
+      // Otherwise, notify the user’s socket
+      sendMessageToSocketId(ride.user.socketId, {
+        event: 'ride-started',
+        data: ride
+      });
+    }
+
+    // Extract fields safely
+    const {
+      pickup,
+      destination,
+      fare,
+      distance,
+      duration,
+      status,
+      user,
+      vehicleType,
+      serviceType,
+      paymentMethod,
+      paymentStatus,
+      driver
+    } = ride;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        pickup,
+        destination,
+        fare,
+        distance,
+        duration,
+        status,
+        user,
+        vehicleType,
+        serviceType,
+        paymentMethod,
+        paymentStatus,
+        driver
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: err.message });
   }
 };
 

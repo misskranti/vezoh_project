@@ -92,6 +92,10 @@ const userSchema = new mongoose.Schema(
       enum: ["active", "inactive", "suspended"],
       default: "active",
     },
+      socketId: {
+      type:String,
+      default: ""
+    },
   },
   {
     timestamps: true,

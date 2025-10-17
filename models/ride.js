@@ -56,7 +56,7 @@ const rideSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["requested", "accepted", "driver_assigned", "pickup", "in_progress", "completed", "cancelled"],
+      enum: ["requested", "accepted", "driver_assigned", "pickup", "in_progress", "completed", "cancelled", "Started"],
       default: "requested",
     },
     OTPForStartRide:{

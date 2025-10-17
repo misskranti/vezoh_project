@@ -12,6 +12,9 @@ const { getRideHistory } = require("../controllers/rideController.js");
 const {
   cancelRide,
   activeRide,
+  // confirmRide,
+  acceptedRideByDriver,
+  startRide,
   createRide,
   findDriverNearBy,
   rideCompleted,
@@ -76,6 +79,12 @@ router.post("/request", auth, createRide);
 
 // Get Active Ride
 router.get("/active", auth, activeRide);
+
+//Confirm Ride 
+router.patch("/rideAccespted/:rideId", auth, acceptedRideByDriver)
+
+//start Ride
+router.patch("/startRide", auth, startRide);
 
 // Cancel Ride
 router.put("/cancel/:rideId", auth, cancelRide);
