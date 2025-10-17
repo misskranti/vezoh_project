@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const http = require("http");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
-const { initializeSocket } = require('./socket');
+const { initializeSocket } = require("./socket");
 
 // Routes
 const userRoutes = require("./routes/customerRoutes.js");
@@ -48,7 +48,9 @@ app.use((err, req, res, next) => {
     success: false,
     message: "Something went wrong!",
     error:
-      process.env.NODE_ENV === "development" ? err.message : "Internal server error",
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : "Internal server error",
   });
 });
 
