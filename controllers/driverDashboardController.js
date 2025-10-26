@@ -60,7 +60,7 @@ exports.driverdashboard = async (req, res) => {
       .select("vehicle verificationStatus")
       .lean(); 
 
-    const verificationStatus = vehicle?.verificationStatus; //|| "pending";
+    const verificationStatus = vehicle?.verificationStatus|| "pending";
     const servicestatus =
       verificationStatus === "approved" ? "active" : "pending";
 

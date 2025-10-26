@@ -3,19 +3,37 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const http = require("http");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
 // Routes
 const userRoutes = require("./routes/customerRoutes.js");
 const driverRoutes = require("./routes/driverRoutes.js");
 
+const { Server } = require("socket.io");
+const { setIO } = require("./utils/socket");
+
 const app = express();
 const server = http.createServer(app);
+
+app.set("trust proxy", 1);
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.disable("x-powered-by")
+app.use(helmet())
+
+// Basic rate limiter for all API routes
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max: 300, // 300 requests/window per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+app.use("/api/", apiLimiter)
 
 // Database connection
 mongoose
@@ -38,6 +56,24 @@ app.get("/", (req, res) => {
   });
 });
 
+// Initialize Socket.IO and expose via utils/socket
+const io = new Server(server, {
+  cors: {
+    origin: true,
+    credentials: true,
+  },
+})
+setIO(io)
+
+// Basic connection handler + optional ride room join
+io.on("connection", (socket) => {
+  socket.on("join:ride", (rideId) => {
+    if (!rideId) return
+    const room = `ride:${rideId}`
+    socket.join(room)
+  })
+})
+
 // Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -45,7 +81,7 @@ app.use((err, req, res, next) => {
     success: false,
     message: "Something went wrong!",
     error:
-      process.env.NODE_ENV === "development" ? err.message : "Internal server error",
+    process.env.NODE_ENV === "development" ? err.message : "Internal server error",
   });
 });
 

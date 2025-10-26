@@ -48,7 +48,7 @@ exports.selectedServices = async (req, res) => {
       success: true,
       message: "Driver Selected Services",
       data: {
-        verificationStatus: fetchDetails?.verificationStatus, //|| "pending",
+        verificationStatus: fetchDetails?.verificationStatus|| "pending",
         services: req.user.services,
         serviceStatus:
           fetchDetails && fetchDetails?.verificationStatus === "approved"

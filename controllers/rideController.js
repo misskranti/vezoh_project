@@ -16,7 +16,7 @@ exports.findDriverNearBy = async (req, res) => {
     }
 
     const drivers = await Driver.find({
-      location: { $near: { $geometry: { type: "Point", coordinates: [parseFloat(longitude), parseFloat(latitude)] }} },
+      location: { $near: { $geometry: { type: "Point", coordinates: [Number.parseFloat(longitude), Number.parseFloat(latitude)] }} },
       status: "online",
       "availability.isAvailable": true,
       services: serviceType,
@@ -33,6 +33,7 @@ exports.findDriverNearBy = async (req, res) => {
       bike: { base: 20, perKm: 8, perMin: 1, surge: 1.0 },
       auto: { base: 30, perKm: 12, perMin: 1.5, surge: 1.0 },
       car: { base: 50, perKm: 15, perMin: 2, surge: 1.0 },
+      truck: { base: 80, perKm: 25, perMin: 3, surge: 1.0 },
     };
 
     const driverResults = await Promise.all(drivers.map(async (driver) => {
@@ -43,7 +44,7 @@ exports.findDriverNearBy = async (req, res) => {
         try {
           etaData = await GoogleMapsService.calculateDistance(
             {lat: driver.location.coordinates[1],lng: driver.location.coordinates[0]},
-            { lat: parseFloat(latitude), lng: parseFloat(longitude) },
+            { lat: Number.parseFloat(latitude), lng: Number.parseFloat(longitude) },
             "driving"
           );
         } catch (err) {
@@ -53,8 +54,8 @@ exports.findDriverNearBy = async (req, res) => {
         let fareEstimate = null;
         try {
           const distData = await GoogleMapsService.calculateDistance(
-            { lat: parseFloat(latitude), lng: parseFloat(longitude) },
-            {lat: parseFloat(destinationLat),lng: parseFloat(destinationLng)},
+            { lat: Number.parseFloat(latitude), lng: Number.parseFloat(longitude) },
+            {lat: Number.parseFloat(destinationLat),lng: Number.parseFloat(destinationLng)},
             "driving"
           );
 
@@ -74,7 +75,7 @@ exports.findDriverNearBy = async (req, res) => {
           rating: driver.rating,
           location: {lat: driver.location.coordinates[1],lng: driver.location.coordinates[0],address: driver.location.address},
           vehicle: vehicle?.vehicle || null,
-          vehicleVerification: vehicle?.verificationStatus, //|| "pending",
+          vehicleVerification: vehicle?.verificationStatus || "pending",
           estimatedFare: fareEstimate,
         eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
         };
@@ -91,10 +92,11 @@ exports.findDriverNearBy = async (req, res) => {
 
 exports.createRide = async (req, res) => {
   try {
-    const { pickup, destination, driverId, vehicleType, serviceType = "ride", offeredFare, paymentMethod = "cash", userId, rideNotes } = req.body;
-    if (!pickup || !destination || !driverId || !vehicleType || !userId) return res.status(400).json({ success: false, message: "Pickup, destination, driver, vehicle type, and userId are required" });
-
-    const driver = await Driver.findById(driverId);
+    const { pickup, destination, vehicleType, serviceType = "ride", offeredFare, paymentMethod = "cash", userId, rideNotes } = req.body;
+    if (!pickup || !destination || !vehicleType || !userId) {
+      return res.status(400).json({ success: false, message: "Pickup, destination, vehicle type, and userId are required" });
+    }
+      const driver = await Driver.findById(driverId);
     if (!driver || !driver.availability.isAvailable || driver.status !== "online") return res.status(400).json({ success: false, message: "Driver is no longer available" });
 
     let distanceData, estimatedFare, distance, duration;
@@ -103,63 +105,81 @@ exports.createRide = async (req, res) => {
       distance = distanceData.distance.value / 1000;
       duration = distanceData.duration.value / 60;
 
-      const fareRates = { bike: { base: 20, perKm: 8 }, auto: { base: 30, perKm: 12 }, car: { base: 50, perKm: 15 } };
+      const fareRates = { bike: { base: 20, perKm: 8 }, auto: { base: 30, perKm: 12 }, car: { base: 50, perKm: 15 },truck: { base: 80, perKm: 25 }};
+
       const rate = fareRates[vehicleType] || fareRates.auto;
       estimatedFare = Math.round(rate.base + distance * rate.perKm);
     } catch (error) {
+      // fallback values if Maps fails
       distance = 5; duration = 15;
-      estimatedFare = vehicleType === "bike" ? 60 : vehicleType === "auto" ? 80 : 120;
+      estimatedFare = vehicleType === "bike" ? 60 : vehicleType === "auto" ? 80 : vehicleType === "car" ? 120 : 180
     }
 
-    const ride = new Ride({
+    let routeInfo = { polyline: null, totalDistanceMeters: null, totalDurationSec: null, waypoints: [] }
+    try {
+      routeInfo = await GoogleMapsService.getDirections(
+        { lat: pickup.latitude, lng: pickup.longitude },
+        { lat: destination.latitude, lng: destination.longitude },
+        "driving",
+      )
+    } catch (_) {
+      // best-effort, proceed without route
+    }
+
+    const rideDoc = {
       user: userId,
-      driver: driverId,
       pickup: {
-      address: distanceData.origin_addresses,
-      coordinates: {
-        latitude: pickup.latitude,
-        longitude: pickup.longitude,
+        address: distanceData?.origin_addresses,
+        coordinates: {
+           latitude: pickup.latitude, 
+           longitude: pickup.longitude, 
+          },
       },
-    },
       destination: {
-      address: distanceData.destination_addresses,
-      coordinates: {
-        latitude: destination.latitude,
-        longitude: destination.longitude,
+        address: distanceData?.destination_addresses,
+        coordinates: {
+           latitude: destination.latitude,
+            longitude: destination.longitude, 
+          },
       },
-    },
       serviceType,
       vehicleType,
       fare: { estimated: estimatedFare, offered: offeredFare || estimatedFare, final: null },
-      distance: { estimated: Math.round(distance * 100) / 100, text: distanceData?.distance.text || `${Math.round(distance)} km`, value: distanceData?.distance.value || Math.round(distance * 1000) },
-      duration: { estimated: Math.ceil(duration), text: distanceData?.duration.text || `${Math.ceil(duration)} min`, value: distanceData?.duration.value || Math.ceil(duration * 60) },
+      distance: { estimated: Math.round(distance * 100) / 100 },
+      duration: { estimated: Math.ceil(duration) },
       paymentMethod,
       rideNotes: rideNotes || "",
       status: "requested",
       OTPForStartRide: Math.floor(1000 + Math.random() * 9000),
-      requestedAt: new Date(),
-    });
-    const rideCreated = await Ride.create(ride);
-    await rideCreated.populate("driver", "name phone vehicle rating");
+      route: routeInfo?.waypoints?.length
+        ? {
+            polyline: routeInfo.polyline,
+            totalDistanceMeters: routeInfo.totalDistanceMeters,
+            totalDurationSec: routeInfo.totalDurationSec,
+            waypoints: routeInfo.waypoints,
+          }
+        : undefined,
+    }
 
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Ride requested successfully",
-        data: {
-          rideId: rideCreated._id,
-          status: rideCreated.status,
-          OTPForStartRide: rideCreated.OTPForStartRide,
-          driver: rideCreated.driver,
-          pickup: rideCreated.pickup,
-          destination: rideCreated.destination,
-          fare: rideCreated.fare,
-          distance: rideCreated.distance,
-          duration: rideCreated.duration,
-          estimatedArrival: null,
-        },
-      });
+    const rideCreated = await Ride.create(rideDoc)
+    return res
+    .status(201)
+    .json({
+      success: true,
+      message: "Ride requested successfully",
+      data: {
+        rideId: rideCreated._id,
+        status: rideCreated.status,
+        OTPForStartRide: rideCreated.OTPForStartRide,
+        driver: null,
+        pickup: rideCreated.pickup,
+        destination: rideCreated.destination,
+        fare: rideCreated.fare,
+        distance: rideCreated.distance,
+        duration: rideCreated.duration,
+        estimatedArrival: null,
+      },
+    });
   } catch (error) {
     console.error("Ride request error:", error.message);
     res.status(500).json({ success: false, message: "Failed to request ride" });
@@ -173,22 +193,23 @@ exports.activeRide = async (req, res) => {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ success: false, message: "UserId is required" });
 
-    const activeRide = await Ride.findOne({ user: userId, status: { $in: ["requested", "accepted", "arriving", "arrived", "pickup", "in_progress"] } })
+    const activeRide = await Ride.findOne({ user: userId,status: { $in: ["requested", "accepted", "driver_assigned", "pickup", "in_progress"] }
+    })
       .populate("driver", "name phone vehicle location rating profileImage")
       .sort({ createdAt: -1 });
 
     if (!activeRide) return res.json({ success: true, data: null, message: "No active ride found" });
 
     let driverETA = null;
-    if (["accepted", "arriving"].includes(activeRide.status) && activeRide.driver?.location?.coordinates) {
+    if (["accepted", "driver_assigned"].includes(activeRide.status) && activeRide.driver?.location?.coordinates) {
       try {
         const [lng, lat] = activeRide.driver.location.coordinates;
-        const etaData = await GoogleMapsService.calculateDistance({ lat, lng }, { lat: activeRide.pickup.latitude, lng: activeRide.pickup.longitude }, "driving");
+        const etaData = await GoogleMapsService.calculateDistance({ lat, lng }, { lat: activeRide.pickup.coordinates.latitude, lng: activeRide.pickup.coordinates.longitude }, "driving");
         driverETA = { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) };
       } catch (error) { console.warn("Failed to calculate driver ETA:", error.message); }
     }
 
-    res.json({ success: true, data: { rideId: activeRide._id, status: activeRide.status, driver: activeRide.driver, pickup: activeRide.pickup, destination: activeRide.destination, fare: activeRide.fare, distance: activeRide.distance, duration: activeRide.duration, paymentMethod: activeRide.paymentMethod, driverETA } });
+    return res.json({ success: true, data: { rideId: activeRide._id, status: activeRide.status, driver: activeRide.driver, pickup: activeRide.pickup, destination: activeRide.destination, fare: activeRide.fare, distance: activeRide.distance, duration: activeRide.duration, paymentMethod: activeRide.paymentMethod, driverETA } });
   } catch (error) {
     console.error("Get active ride error:", error);
     res.status(500).json({ success: false, message: "Failed to get active ride" });
@@ -206,35 +227,26 @@ exports.cancelRide = async (req, res) => {
     if (!ride) return res.status(404).json({ success: false, message: "Ride not found" });
     if (ride.user.toString() !== userId) return res.status(403).json({ success: false, message: "Unauthorized" });
 
-    const cancellableStatuses = ["requested", "accepted", "arriving"];
+    const cancellableStatuses = ["requested", "accepted", "driver_assigned"];
     if (!cancellableStatuses.includes(ride.status)) return res.status(400).json({ success: false, message: "Ride cannot be cancelled now" });
 
-    // const CANCELLATION_FEE = 25;
-    // ride.status = "cancelled";
-    // ride.cancellationReason = reason;
-    // ride.cancellationFee = CANCELLATION_FEE;
-    // ride.cancelledAt = new Date();
-
     const canceledRide = await Ride.findByIdAndUpdate(
-  { _id: rideId },
-  {
-    $set: {
-      // cancellationFee: 25,
-      status: "cancelled",
-      cancellationReason: reason,
-      "timeline.cancelledAt": new Date()
-    }
-  },
-  { new: true }
-);
-
-    // await ride.save();
+      { _id: rideId },
+      {
+        $set: {
+          status: "cancelled",
+          cancellationReason: reason,
+          "timeline.cancelledAt": new Date()
+        }
+      },
+      { new: true }
+    );
 
     if (canceledRide.driver)
       await Driver.findByIdAndUpdate(canceledRide.driver, {
         "availability.isAvailable": true,
       });
-      
+
     return res.status(200).json({
       success: true,
       message: "Ride cancelled",
@@ -242,7 +254,6 @@ exports.cancelRide = async (req, res) => {
         rideId: canceledRide._id,
         status: canceledRide.status,
         cancellationFee: canceledRide.cancellationFee,
-        // refundAmount: Math.max(0, Number(canceledRide.fare.offered) - Number(canceledRide.cancellationFee)), //how can you refund before payment done by user ?
       },
     });
   } catch (error) {
@@ -259,33 +270,33 @@ exports.rideCompleted = async (req, res) => {
     const { userId, paymentMethod } = req.body;
 
     const ride = await Ride.findOne({
-  _id: rideId,
-  status: { $nin: ["cancelled", "completed"] }
-});
+      _id: rideId,
+      status: { $nin: ["cancelled", "completed"] }
+    });
     if (!ride)
       return res
         .status(404)
         .json({ success: false, message: "Ride not found" });
 
     if (ride.user.toString() !== userId)
-      return res.status(403).json({ success: false, message: "Unauthorized" });
+       return res.status(403).json({ success: false, message: "Unauthorized" });
 
-   paymentMethod ? paymentMethod:"cash"
+    const finalPaymentMethod = paymentMethod || "cash"
 
     const completedRide = await Ride.findByIdAndUpdate(
-  { _id: rideId}, 
-  {
-    $set: {
-      status: "completed",
-      paymentStatus: "paid",
-      paymentMethod:paymentMethod,
-      "timeline.completedAt": new Date()
-    }
-  },
-  { new: true }
-);
+      { _id: rideId},
+      {
+        $set: {
+          status: "completed",
+          paymentStatus: "paid",
+          paymentMethod: finalPaymentMethod,
+          "timeline.completedAt": new Date()
+        }
+      },
+      { new: true }
+    );
 
-
+    
     if (completedRide.driver)
       await Driver.findByIdAndUpdate(completedRide.driver, {
         "availability.isAvailable": true,
@@ -300,8 +311,8 @@ exports.rideCompleted = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Cancel ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to cancel ride" });
+    console.error("Ride completion error:", error)
+    res.status(500).json({ success: false, message: "Failed to complete ride" })
   }
 };
 
@@ -311,38 +322,37 @@ exports.rating = async (req, res) => {
   try {
     const { rideId } = req.params;
     const { userId, userRating,
-      driverRating,
-      userComment,
-      driverComment } = req.body;
+       driverRating,
+        userComment,
+         driverComment } = req.body;
 
-      if(!rideId || !userId) return res.status(400).json({success: true,
-      message: "Ride id and user id both are required"})
+    if(!rideId || !userId) return res.status(400).json({success: false,
+       message: "Ride id and user id both are required"})
 
     const ride = await Ride.findOne({
-  _id: rideId,
-  status: "completed"
-});
-    if (!ride)
+      _id: rideId,
+      status: "completed"
+    });
+    if (!ride) 
       return res
-        .status(404)
-        .json({ success: false, message: "Ride not found" });
+    .status(404)
+    .json({ success: false, message: "Ride not found" });
 
     if (ride.user.toString() !== userId)
-      return res.status(403).json({ success: false, message: "Unauthorized" });
+       return res.status(403).json({ success: false, message: "Unauthorized" });
 
     const ratingForRide = await Ride.findByIdAndUpdate(
-   rideId, 
-  {
-    $set: {
-      "rating.userRating": Number(userRating),
-      "rating.driverRating": driverRating ? Number(driverRating) : 0,
-      "rating.userComment": userComment ? userComment : "",
-      "rating.driverComment": driverComment ? driverComment : ""
-    }
-  },
-  { upsert: true }
-);
-
+      rideId,
+      {
+        $set: {
+          "rating.userRating": Number(userRating),
+          "rating.driverRating": driverRating ? Number(driverRating) : 0,
+          "rating.userComment": userComment ? userComment : "",
+          "rating.driverComment": driverComment ? driverComment : ""
+        }
+      },
+      { upsert: true, new: true }
+    );
 
     return res.status(200).json({
       success: true,
@@ -357,11 +367,10 @@ exports.rating = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Cancel ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to cancel ride" });
+    console.error("Rating error:", error);
+    res.status(500).json({ success: false, message: "Failed to rate ride" });
   }
-};
-
+}
 
 exports.getRideHistory = async (req, res) => {
   try {
@@ -371,11 +380,11 @@ exports.getRideHistory = async (req, res) => {
     const query = { user: userId };
     if (status) query.status = status; else query.status = { $in: ["completed", "cancelled"] };
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const rides = await Ride.find(query).populate("driver", "name phone vehicle rating").sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit));
+    const skip = (Number.parseInt(page) - 1) * Number.parseInt(limit);
+    const rides = await Ride.find(query).populate("driver", "name phone vehicle rating").sort({ createdAt: -1 }).skip(skip).limit(Number.parseInt(limit));
     const totalRides = await Ride.countDocuments(query);
 
-    const ridesWithDetails = rides.map(ride => ({
+    const ridesWithDetails = rides.map((ride) => ({
       rideId: ride._id,
       status: ride.status,
       driver: ride.driver,
@@ -385,11 +394,11 @@ exports.getRideHistory = async (req, res) => {
       distance: ride.distance,
       duration: ride.duration,
       date: ride.createdAt,
-      completedAt: ride.completedAt,
-      cancelledAt: ride.cancelledAt
-    }));
+      completedAt: ride.timeline?.completedAt || null,
+      cancelledAt: ride.timeline?.cancelledAt || null,
+    }))
 
-    res.json({ success: true, data: { rides: ridesWithDetails, pagination: { currentPage: parseInt(page), totalPages: Math.ceil(totalRides / parseInt(limit)), totalRides } } });
+    res.json({ success: true, data: { rides: ridesWithDetails, pagination: { currentPage: Number.parseInt(page), totalPages: Math.ceil(totalRides / Number.parseInt(limit)), totalRides } } });
   } catch (error) {
     console.error("Get ride history error:", error);
     res.status(500).json({ success: false, message: "Failed to get ride history" });

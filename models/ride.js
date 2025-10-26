@@ -54,6 +54,20 @@ const rideSchema = new mongoose.Schema(
       estimated: Number, 
       actual: Number,
     },
+    //  NEW: Progress tracking
+    progress: {
+      percent: { 
+        type: Number, 
+        min: 0, 
+        max: 100,
+        default: 0 
+      },
+      remainingMin: { 
+        type: Number, 
+        min: 0 
+      },
+      lastUpdated: Date,
+    },
     status: {
       type: String,
       enum: ["requested", "accepted", "driver_assigned", "pickup", "in_progress", "completed", "cancelled"],
