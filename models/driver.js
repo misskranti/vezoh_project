@@ -101,6 +101,10 @@ const driverSchema = new mongoose.Schema(
       accountHolderName: String,
       bankName: String,
     },
+    socketId: {
+      type:String,
+      default: ""
+    },
   },
   {
     timestamps: true,

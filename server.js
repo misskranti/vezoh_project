@@ -6,6 +6,7 @@ const http = require("http");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
+const { initializeSocket } = require("./socket");
 
 // Routes
 const userRoutes = require("./routes/customerRoutes.js");
@@ -16,6 +17,7 @@ const { setIO } = require("./utils/socket");
 
 const app = express();
 const server = http.createServer(app);
+initializeSocket(server);
 
 app.set("trust proxy", 1);
 

@@ -2,7 +2,9 @@ const Driver = require("../models/driver");
 const Vehicle = require("../models/vehicle.js");
 const Ride = require("../models/ride");
 const GoogleMapsService = require("../utils/googleMapsService");
-const{generateOTP} = require("../utils/helpers.js")
+const{generateOTP} = require("../utils/helpers.js");
+const rideService = require("../utils/services.js");
+const { sendMessageToSocketId } = require("../socket.js");
 
 
 // FIND NEARBY DRIVERS
@@ -213,6 +215,110 @@ exports.activeRide = async (req, res) => {
   } catch (error) {
     console.error("Get active ride error:", error);
     res.status(500).json({ success: false, message: "Failed to get active ride" });
+    
+    // Confirm Ride
+    
+    exports.acceptedRideByDriver = async (req, res) => {
+      try {
+        const rideId = req.params.rideId;
+        const { driverId, socketId } = req.body; //socketid of user for sending ride confired msg
+        if (!rideId || !driverId)
+          return res
+            .status(400)
+            .json({
+              status: false,
+              message: "Ride d and Driver Id both are required",
+            });
+    
+        //  console.log(req.body,"===ride id ====>",rideId)
+        const rideConfirmed = await Ride.findOneAndUpdate(
+          { _id: rideId, driver: driverId, status: "requested" },
+          { status: "accepted" },
+          { new: true }
+        ).populate("user", "_id socketId");
+    
+        if (!rideConfirmed)
+          return res.status(404).json({ status: false, message: "Ride not found" });
+        if (socketId) {
+          sendMessageToSocketId(socketId, {
+            event: "ride-confirmed",
+            data: rideConfirmed,
+          });
+        } else {
+          sendMessageToSocketId(rideConfirmed.user.socketId, {
+            event: "ride-confirmed",
+            data: rideConfirmed,
+          });
+        }
+    
+        return res.status(200).json({success:true, data:rideConfirmed});
+      } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: err.message });
+      }
+    };
+    //Start ride after getting confirmation with Driver using otp
+    
+    exports.startRide = async (req, res) => {
+      try {
+        const { rideId, otp, driverId, socketId } = req.body;
+        const ride = await rideService.startRide({ rideId, otp, driverId });
+    
+        console.log(ride);
+    
+        if (socketId) {
+          // If client provided socketId, send message to that socket
+          sendMessageToSocketId(socketId, {
+            event: "ride-started",
+            data: ride,
+          });
+        } else {
+          // Otherwise, notify the user’s socket
+          sendMessageToSocketId(ride.user.socketId, {
+            event: "ride-started",
+            data: ride,
+          });
+        }
+    
+        // Extract fields safely
+        const {
+          pickup,
+          destination,
+          fare,
+          distance,
+          duration,
+          status,
+          user,
+          vehicleType,
+          serviceType,
+          paymentMethod,
+          paymentStatus,
+          driver,
+        } = ride;
+    
+        return res.status(200).json({
+          success: true,
+          data: {
+            pickup,
+            destination,
+            fare,
+            distance,
+            duration,
+            status,
+            user,
+            vehicleType,
+            serviceType,
+            paymentMethod,
+            paymentStatus,
+            driver,
+          },
+        });
+      } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: err.message });
+      }
+    };
+    
   }
 };
 

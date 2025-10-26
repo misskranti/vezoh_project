@@ -23,6 +23,8 @@ const { getRideHistory } = require("../controllers/rideController.js");
 const {
   cancelRide,
   activeRide,
+  acceptedRideByDriver,
+  startRide,
   createRide,
   findDriverNearBy,
   rideCompleted,
@@ -87,6 +89,11 @@ router.post("/request", auth, requestRideBodyValidator, throwError, createRide);
 
 // Get Active Ride
 router.get("/active", auth, activeRideQueryValidator, throwError, activeRide);
+//Confirm Ride 
+router.patch("/rideAccespted/:rideId", auth, acceptedRideByDriver)
+
+//start Ride
+router.patch("/startRide", auth, startRide);
 
 // Cancel Ride
 router.put("/cancel/:rideId", auth, cancelRideValidator, throwError, cancelRide);
