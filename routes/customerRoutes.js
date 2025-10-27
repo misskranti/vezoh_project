@@ -42,7 +42,7 @@ const {
 
 // User Registration
 router.post("/send-otp", authController.sendUserEmailOtp);
-router.post("/register", customerRegisterValidator, throwError, authController.registerUser);
+router.post("/complete_profile", customerRegisterValidator, throwError, authController.completeProfile);
 
 // Email Verification
 router.post("/verify-email-otp", customerVerifyOtpValidator, throwError, authController.verifyUserEmailOtp);
