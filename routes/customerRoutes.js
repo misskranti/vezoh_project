@@ -41,6 +41,7 @@ const {
 // ==============================
 
 // User Registration
+router.post("/send-otp", authController.sendUserEmailOtp);
 router.post("/register", customerRegisterValidator, throwError, authController.registerUser);
 
 // Email Verification
@@ -90,10 +91,10 @@ router.post("/request", auth, requestRideBodyValidator, throwError, createRide);
 // Get Active Ride
 router.get("/active", auth, activeRideQueryValidator, throwError, activeRide);
 //Confirm Ride 
-router.patch("/rideAccespted/:rideId", auth, acceptedRideByDriver)
+//router.patch("/rideAccespted/:rideId", auth, acceptedRideByDriver)
 
 //start Ride
-router.patch("/startRide", auth, startRide);
+//router.patch("/startRide", auth, startRide);
 
 // Cancel Ride
 router.put("/cancel/:rideId", auth, cancelRideValidator, throwError, cancelRide);

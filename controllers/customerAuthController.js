@@ -8,8 +8,64 @@ const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
 
-// ---------------------- REGISTER USER ----------------------
 
+
+// ---------------------- SEND EMAIL OTP ----------------------
+
+exports.sendUserEmailOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+
+    if (!email)
+      return res
+        .status(400)
+        .json({ success: false, message: "Email is required" });
+
+    if (!isValidEmail(email))
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid email address" });
+
+    
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    
+    if (!user) {
+      user = new User({
+        name: "",
+        email: email.toLowerCase(),
+        phone: "",
+        isVerified: false,
+      });
+    }
+
+    
+    const otp = generateOTP().toString();
+    user.verificationCode = otp;
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min expiry
+    user.isVerified = false;
+    await user.save();
+
+    
+    await sendEmailVerificationOTP(user.email, otp, user.name || "User");
+
+    
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent successfully to your email",
+    });
+  } catch (err) {
+    console.error("sendUserEmailOtp error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while sending OTP",
+    });
+  }
+};
+
+
+// ---------------------- REGISTER USER ----------------------
 exports.registerUser = async (req, res) => {
   try {
     const { name, email, phone } = req.body;
@@ -54,11 +110,14 @@ exports.registerUser = async (req, res) => {
 
     await sendEmailVerificationOTP(user.email, otp, user.name);
 
+    
+    const token = generateToken(user._id, "user");
+
     return res.status(201).json({
       success: true,
       message:
         "User registered successfully. Please check your email for the verification code.",
-      data: { id: user._id.toString() },
+      data: { id: user._id.toString(), token },
     });
   } catch (err) {
     console.error(err);
