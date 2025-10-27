@@ -5,6 +5,7 @@ const {
   generateOTP,
   formatPhoneNumber,
   isValidEmail,
+  generateUniquePhone
 } = require("../utils/helpers");
 const { sendEmailVerificationOTP } = require("../utils/emailService");
 
@@ -40,7 +41,7 @@ exports.sendUserEmailOtp = async (req, res) => {
     let newUser = new User({
       name: "dummy",
       email: email.toLowerCase(),
-      phone: "+910000000000", // Dummy phone number,
+      phone: generateUniquePhone(), // Dummy phone number,
       isVerified: false,
       verificationCode: generateOTP().toString(),
       otpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 min expiry

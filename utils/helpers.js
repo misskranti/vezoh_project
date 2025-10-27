@@ -87,6 +87,17 @@ const isValidPhone = (phone) => {
   return phoneRegex.test(phone.replace(/\s/g, ""))
 }
 
+// utils/generateUniquePhone.js
+
+function generateUniquePhone() {
+  // Indian numbers start with 6–9 and have 10 digits total
+  const startDigit = Math.floor(Math.random() * 4) + 6; // gives 6,7,8,9
+  const remainingDigits = Math.floor(100000000 + Math.random() * 900000000); // ensures 9 more digits
+  const phoneNumber = `${startDigit}${remainingDigits}`;
+
+  return phoneNumber;
+}
+
 module.exports = {
   generateBookingId,
   generateTransactionId,
@@ -96,4 +107,5 @@ module.exports = {
   formatPhoneNumber,
   isValidEmail,
   isValidPhone,
+  generateUniquePhone
 }
