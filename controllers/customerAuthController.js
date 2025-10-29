@@ -19,53 +19,73 @@ exports.sendUserEmailOtp = async (req, res) => {
   try {
     const { email } = req.body;
 
-    if (!email)
-      return res
-        .status(400)
-        .json({ success: false, message: "Email is required" });
-
-    if (!isValidEmail(email))
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid email address" });
-
-    let user = await User.findOne({ email: email.toLowerCase() });
-
-    if (user) {
+    // Case 4: Empty email
+    if (!email) {
       return res.status(400).json({
         success: false,
-        message: "User already exists with this email",
+        message: "Email is required",
       });
     }
 
-    let newUser = new User({
+    // Case 4: Invalid email format
+    if (!isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a valid email address",
+      });
+    }
+
+    // Check if user exists
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    // Case 3: User exists AND verified → Block registration
+    if (user && user.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists. Please sign in.",
+      });
+    }
+
+    // Case 2: User exists but NOT verified → Resend OTP
+    if (user && !user.isVerified) {
+      const otp = generateOTP().toString();
+      user.verificationCode = otp;
+      user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save();
+
+      await sendEmailVerificationOTP(user.email, otp, user.name || "User");
+
+      return res.status(200).json({
+        success: true,
+        message: "New OTP sent successfully to your email.",
+      });
+    }
+
+    // Case 1: New user → Create and send OTP
+    const otp = generateOTP().toString();
+    const newUser = new User({
       name: "dummy",
       email: email.toLowerCase(),
-      phone: generateUniquePhone(), // Dummy phone number,
+      phone: generateUniquePhone(),
       isVerified: false,
-      verificationCode: generateOTP().toString(),
-      otpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 min expiry
+      verificationCode: otp,
+      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
     });
 
-    const NewUserCreated = await User.create(newUser);
+    await newUser.save(); 
 
-    const otp = NewUserCreated.verificationCode;
-    await sendEmailVerificationOTP(
-      NewUserCreated.email,
-      otp,
-      NewUserCreated.name || "User"
-    );
+    await sendEmailVerificationOTP(newUser.email, otp, newUser.name || "User");
 
     return res.status(200).json({
       success: true,
-      message: "OTP sent successfully to your email"
-      // otp: NewUserCreated.verificationCode,
+      message: "OTP sent successfully to your email.", 
     });
+
   } catch (err) {
     console.error("sendUserEmailOtp error:", err);
     return res.status(500).json({
       success: false,
-      message: "Server error while sending OTP",
+      message: "Something went wrong. Please try again later.",
     });
   }
 };
