@@ -196,7 +196,7 @@ exports.verifyUserEmailOtp = async (req, res) => {
         .json({ success: false, message: "User not found" });
     }
 
-    let token = "";
+    // let token = "";
 
     if (type === "registration") {
       if (!user.verificationCode || user.isVerified) {
@@ -215,17 +215,17 @@ exports.verifyUserEmailOtp = async (req, res) => {
           .status(400)
           .json({ success: false, message: "Invalid or expired OTP" });
       }
-      token = generateToken(user._id, "user");
+      // token = generateToken(user._id, "user");
       user.isVerified = true;
       user.verificationCode = null;
       user.otpExpiry = null;
-      user.userToken = token;
+      // user.userToken = token;
       await user.save();
 
       return res.json({
         success: true,
         message: "User email verified successfully",
-        data: { id: user._id.toString(), token },
+        data: { id: user._id.toString() },
       });
     }
 
@@ -246,7 +246,7 @@ exports.verifyUserEmailOtp = async (req, res) => {
           .status(400)
           .json({ success: false, message: "Invalid or expired OTP" });
       }
-      token = generateToken(user._id, "user");
+     let token = generateToken(user._id, "user");
       user.loginOtpVerified = true;
       user.loginVerificationCode = null;
       user.loginOtpExpiry = null;
@@ -255,7 +255,7 @@ exports.verifyUserEmailOtp = async (req, res) => {
 
       return res.json({
         success: true,
-        message: "User login verified successfully",
+        message: "User email verified successfully",
         data: { id: user._id.toString(), token },
       });
     }
@@ -317,7 +317,7 @@ exports.resendUserEmailOtp = async (req, res) => {
 
       const otp = generateOTP().toString();
       user.loginVerificationCode = otp;
-      user.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      user.loginOtpExpiry = new Date(Date.now() + 10 * 60 * 1000); // will expire in 10 minutes
       user.loginOtpVerified = false;
       await user.save();
 

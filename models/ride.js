@@ -1,5 +1,4 @@
-
-const mongoose = require("mongoose")
+const mongoose = require("mongoose");
 
 const rideSchema = new mongoose.Schema(
   {
@@ -29,7 +28,7 @@ const rideSchema = new mongoose.Schema(
     },
     serviceType: {
       type: String,
-      enum: ["ride", "delivery", "freight"],
+      enum: ["ride", "curior", "freight"],
       default: "ride",
     },
     vehicleType: {
@@ -42,40 +41,35 @@ const rideSchema = new mongoose.Schema(
       offered: Number,
       final: Number,
     },
-    cancellationFee:{
+    cancellationFee: {
       type: Number,
-      default:0
+      default: 0,
     },
     distance: {
       estimated: Number,
       actual: Number,
     },
     duration: {
-      estimated: Number, 
+      estimated: Number,
       actual: Number,
-    },
-    //  NEW: Progress tracking
-    progress: {
-      percent: { 
-        type: Number, 
-        min: 0, 
-        max: 100,
-        default: 0 
-      },
-      remainingMin: { 
-        type: Number, 
-        min: 0 
-      },
-      lastUpdated: Date,
     },
     status: {
       type: String,
-      enum: ["requested", "accepted", "driver_assigned", "pickup", "in_progress", "completed", "cancelled", "Started"],
+      enum: [
+        "requested",
+        "accepted",
+        "driver_assigned",
+        "pickup",
+        "in_progress",
+        "completed",
+        "cancelled",
+        "Started",
+      ],
       default: "requested",
     },
-    OTPForStartRide:{
-      type:Number,
-      required:true
+    OTPForStartRide: {
+      type: Number,
+      required: true,
     },
     paymentMethod: {
       type: String,
@@ -102,16 +96,50 @@ const rideSchema = new mongoose.Schema(
       completedAt: Date,
       cancelledAt: Date,
     },
+    serviceDetails: {
+      name: {
+        type: String,
+      },
+      description: {
+        type: String,
+      },
+      weight: {
+        quintal: {
+          type: Number,
+        },
+        kilogram: {
+          type: Number,
+        },
+        gram: {
+          type: Number,
+        },
+      },
+      deliverTo: {
+        name: {
+          type: String,
+        },
+        phone: {
+          type: Number,
+        },
+        email: {
+          type: String,
+        },
+      },
+    },
+    preDeliveryOTP: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,
-  },
-)
+  }
+);
 
-rideSchema.index({ user: 1 })
-rideSchema.index({ driver: 1 })
-rideSchema.index({ status: 1 })
-rideSchema.index({ "pickup.coordinates": "2dsphere" })
-rideSchema.index({ "destination.coordinates": "2dsphere" })
+rideSchema.index({ user: 1 });
+rideSchema.index({ driver: 1 });
+rideSchema.index({ status: 1 });
+rideSchema.index({ "pickup.coordinates": "2dsphere" });
+rideSchema.index({ "destination.coordinates": "2dsphere" });
 
-module.exports = mongoose.model("Ride", rideSchema)
+module.exports = mongoose.model("Ride", rideSchema);
