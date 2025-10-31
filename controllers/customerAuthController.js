@@ -96,23 +96,34 @@ exports.completeProfile = async (req, res) => {
       return res.status(404).json({
         success: false,
         message:
-          "User not exist with this email or phone. Please register first.",
+         "User not exist with this email or phone. Please register first.",
       });
+
+    if (existingUser.isProfileCompleted) {
+      return res.status(409).json({
+        success: false,
+        message: "Your profile has already been completed. To make changes, please go to Settings.",
+      })
+    }
 
     const updateUserProfile = await User.findOneAndUpdate(
       {
         $or: [{ email: email.toLowerCase() }, { phone: formattedPhone }],
       },
-      { name: name.trim(), email: email.toLowerCase(), phone: formattedPhone },
+      { name: name.trim(), email: email.toLowerCase(),
+        phone: formattedPhone,isProfileCompleted: true,
+      },
       { new: true }
     );
 
+     const token = generateToken(updateUserProfile._id, "user")
+
     return res.status(201).json({
       success: true,
-      message: "User registered successfully. Please check your email for the verification code.",
+      message: "Profile completed successfully.",
       data: {
         id: updateUserProfile._id.toString(),
-        token: updateUserProfile.userToken,
+        token: token,
       },
     });
   } catch (err) {

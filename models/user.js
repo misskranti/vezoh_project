@@ -39,6 +39,10 @@ const userSchema = new mongoose.Schema(
     loginVerificationCode: { type: String, default: null },
     loginOtpExpiry: { type: Date, default: null },
     loginOtpVerified: { type: Boolean, default: false }, 
+      isProfileCompleted: {
+      type: Boolean,
+      default: false,
+    },
 
     addresses: [
       {
