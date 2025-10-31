@@ -5,6 +5,16 @@ const GoogleMapsService = require("../utils/googleMapsService");
 const{generateOTP} = require("../utils/helpers.js");
 const rideService = require("../utils/services.js");
 const { sendMessageToSocketId } = require("../socket.js");
+const validateCoordinates = (lat, lng) => {
+  const latNum = Number.parseFloat(lat)
+  const lngNum = Number.parseFloat(lng)
+
+  if (isNaN(latNum) || isNaN(lngNum)) return null
+  if (latNum < -90 || latNum > 90) return null
+  if (lngNum < -180 || lngNum > 180) return null
+
+  return { lat: latNum, lng: lngNum }
+}
 
 
 // FIND NEARBY DRIVERS
@@ -17,8 +27,15 @@ exports.findDriverNearBy = async (req, res) => {
       return res.status(400).json({message:"latitude, longitude, serviceType, destinationLat, and destinationLng are required"});
     }
 
+    const userCoords = validateCoordinates(latitude, longitude)
+    const destCoords = validateCoordinates(destinationLat, destinationLng)
+
+    if (!userCoords || !destCoords) {
+      return res.status(400).json({ success: false, message: "Invalid latitude or longitude values" })
+    }
+
     const drivers = await Driver.find({
-      location: { $near: { $geometry: { type: "Point", coordinates: [Number.parseFloat(longitude), Number.parseFloat(latitude)] }} },
+      location: { $near: { $geometry: { type: "Point", coordinates: [userCoords.lng, userCoords.lat] }} },
       status: "online",
       "availability.isAvailable": true,
       services: serviceType,
@@ -46,7 +63,7 @@ exports.findDriverNearBy = async (req, res) => {
         try {
           etaData = await GoogleMapsService.calculateDistance(
             {lat: driver.location.coordinates[1],lng: driver.location.coordinates[0]},
-            { lat: Number.parseFloat(latitude), lng: Number.parseFloat(longitude) },
+            { lat: userCoords.lat, lng: userCoords.lng },
             "driving"
           );
         } catch (err) {
@@ -56,8 +73,8 @@ exports.findDriverNearBy = async (req, res) => {
         let fareEstimate = null;
         try {
           const distData = await GoogleMapsService.calculateDistance(
-            { lat: Number.parseFloat(latitude), lng: Number.parseFloat(longitude) },
-            {lat: Number.parseFloat(destinationLat),lng: Number.parseFloat(destinationLng)},
+            { lat: userCoords.lat, lng: userCoords.lng },
+            {lat: destCoords.lat, lng: destCoords.lng },
             "driving"
           );
 
@@ -98,12 +115,21 @@ exports.createRide = async (req, res) => {
     if (!pickup || !destination || !vehicleType || !userId) {
       return res.status(400).json({ success: false, message: "Pickup, destination, vehicle type, and userId are required" });
     }
-      const driver = await Driver.findById(driverId);
-    if (!driver || !driver.availability.isAvailable || driver.status !== "online") return res.status(400).json({ success: false, message: "Driver is no longer available" });
+
+    const pickupCoords = validateCoordinates(pickup.latitude, pickup.longitude)
+    const destCoords = validateCoordinates(destination.latitude, destination.longitude)
+
+    if (!pickupCoords || !destCoords) {
+      return res.status(400).json({ success: false, message: "Invalid pickup or destination coordinates" })
+    };
 
     let distanceData, estimatedFare, distance, duration;
     try {
-      distanceData = await GoogleMapsService.calculateDistance({ lat: pickup.latitude, lng: pickup.longitude }, { lat: destination.latitude, lng: destination.longitude }, "driving");
+      distanceData = await GoogleMapsService.calculateDistance(
+        { lat: pickupCoords.lat, lng: pickupCoords.lng },
+        { lat: destCoords.lat, lng: destCoords.lng },
+        "driving"
+      );
       distance = distanceData.distance.value / 1000;
       duration = distanceData.duration.value / 60;
 
@@ -120,8 +146,8 @@ exports.createRide = async (req, res) => {
     let routeInfo = { polyline: null, totalDistanceMeters: null, totalDurationSec: null, waypoints: [] }
     try {
       routeInfo = await GoogleMapsService.getDirections(
-        { lat: pickup.latitude, lng: pickup.longitude },
-        { lat: destination.latitude, lng: destination.longitude },
+        { lat: pickupCoords.lat, lng: pickupCoords.lng },
+        { lat: destCoords.lat, lng: destCoords.lng },
         "driving",
       )
     } catch (_) {
@@ -133,15 +159,15 @@ exports.createRide = async (req, res) => {
       pickup: {
         address: distanceData?.origin_addresses,
         coordinates: {
-           latitude: pickup.latitude, 
-           longitude: pickup.longitude, 
+          latitude: pickupCoords.lat,
+          longitude: pickupCoords.lng,
           },
       },
       destination: {
         address: distanceData?.destination_addresses,
         coordinates: {
-           latitude: destination.latitude,
-            longitude: destination.longitude, 
+          latitude: destCoords.lat,
+          longitude: destCoords.lng,
           },
       },
       serviceType,
@@ -230,7 +256,7 @@ exports.activeRide = async (req, res) => {
               message: "Ride d and Driver Id both are required",
             });
     
-        //  console.log(req.body,"===ride id ====>",rideId)
+       
         const rideConfirmed = await Ride.findOneAndUpdate(
           { _id: rideId, driver: driverId, status: "requested" },
           { status: "accepted" },

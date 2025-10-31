@@ -1,5 +1,17 @@
-const { body, query, param } = require("express-validator");
-const { isValidPhone } = require("../utils/helpers.js");
+const { body, query, param } = require("express-validator")
+const { isValidPhone } = require("../utils/helpers.js")
+const sendOtpValidator = [
+  body("email")
+    .exists({ checkFalsy: true })
+    .withMessage("Email is required")
+    .bail()
+    .notEmpty()
+    .withMessage("Email is required")
+    .trim()
+    .isEmail()
+    .withMessage("Please enter a valid email address")
+    .normalizeEmail(),
+]
 
 const customerRegisterValidator = [
   body("name")
@@ -38,10 +50,10 @@ const customerRegisterValidator = [
 
 const customerLoginValidator = [
   body("email")
-    .trim()
-    .isEmail()
-    .withMessage("Valid email required")
-    .normalizeEmail(),
+  .trim()
+  .isEmail()
+  .withMessage("Valid email required")
+  .normalizeEmail(),
 ];
 
 const customerVerifyOtpValidator = [
@@ -59,7 +71,6 @@ const customerVerifyOtpValidator = [
     .exists({ checkFalsy: true })
     .withMessage("OTP is required")
     .bail()
-    // .notEmpty().withMessage("OTP cannot be empty")
     .trim()
     .isLength({ min: 4, max: 6 })
     .isNumeric()
@@ -88,88 +99,94 @@ const customerResendOtpValidator = [
     .withMessage("Type is required")
     .bail()
     .isIn(["registration", "login"])
-    .withMessage("Invalid verification type"),
+    .withMessage("Invalid request type"),
 ];
 
-// Maps and rides
-const estimateFareQueryValidator = [
-  query("latitude").isFloat().withMessage("latitude must be a number"),
-  query("longitude").isFloat().withMessage("longitude must be a number"),
+const nearbyDriversQueryValidator = [
+  query("latitude")
+    .exists({ checkFalsy: true })
+    .withMessage("latitude is required")
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("latitude must be a valid number between -90 and 90"),
+  query("longitude")
+    .exists({ checkFalsy: true })
+    .withMessage("longitude is required")
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("longitude must be a valid number between -180 and 180"),
   query("destinationLat")
-    .isFloat()
-    .withMessage("destinationLat must be a number"),
+    .exists({ checkFalsy: true })
+    .withMessage("destinationLat is required")
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("destinationLat must be a valid number between -90 and 90"),
   query("destinationLng")
-    .isFloat()
-    .withMessage("destinationLng must be a number"),
+    .exists({ checkFalsy: true })
+    .withMessage("destinationLng is required")
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("destinationLng must be a valid number between -180 and 180"),
   query("serviceType")
-    .optional()
+    .exists({ checkFalsy: true })
+    .withMessage("serviceType is required")
     .isIn(["ride", "courier", "freight"])
     .withMessage("Invalid serviceType"),
-];
+  query("vehicleType").optional().isIn(["bike", "auto", "car", "truck"]).withMessage("Invalid vehicleType"),
+  query("radius")
+    .optional()
+    .isInt({ min: 1000, max: 50000 })
+    .withMessage("radius must be between 1000 and 50000 meters"),
+]
 
 const requestRideBodyValidator = [
   body("pickup").isObject().withMessage("pickup is required"),
   body("pickup.latitude")
-    .isFloat()
-    .withMessage("pickup.latitude must be a number"),
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("pickup.latitude must be a valid number between -90 and 90"),
   body("pickup.longitude")
-    .isFloat()
-    .withMessage("pickup.longitude must be a number"),
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("pickup.longitude must be a valid number between -180 and 180"),
   body("destination").isObject().withMessage("destination is required"),
   body("destination.latitude")
-    .isFloat()
-    .withMessage("destination.latitude must be a number"),
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("destination.latitude must be a valid number between -90 and 90"),
   body("destination.longitude")
-    .isFloat()
-    .withMessage("destination.longitude must be a number"),
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("destination.longitude must be a valid number between -180 and 180"),
   body("vehicleType")
     .isIn(["bike", "auto", "car", "truck"])
     .withMessage("vehicleType must be one of bike|auto|car|truck"),
-  body("serviceType")
-    .optional()
-    .isIn(["ride", "courier", "freight"])
-    .withMessage("Invalid serviceType"),
-  body("paymentMethod")
-    .optional()
-    .isIn(["cash", "card", "wallet", "UPI"])
-    .withMessage("Invalid paymentMethod"),
-  body("offeredFare").optional().isFloat({ gt: 0 }).toFloat(),
-  body("rideNotes").optional().isString().trim().isLength({ max: 500 }),
-  body("userId").trim().notEmpty().withMessage("userId is required"),
-];
+  body("serviceType").optional().isIn(["ride", "courier", "freight"]).withMessage("Invalid serviceType"),
+  body("paymentMethod").optional().isIn(["cash", "card", "wallet", "UPI"]).withMessage("Invalid paymentMethod"),
+  body("offeredFare").optional().isFloat({ gt: 0 }).toFloat().withMessage("offeredFare must be positive"),
+  body("rideNotes").optional().isString().trim().isLength({ max: 500 }).withMessage("rideNotes max 500 chars"),
+  body("userId").trim().notEmpty().withMessage("userId is required").isMongoId().withMessage("userId must be valid"),
+]
 
 const activeRideQueryValidator = [
-  query("userId").trim().notEmpty().withMessage("userId is required"),
-];
+  query("userId").trim().notEmpty().withMessage("userId is required").isMongoId().withMessage("userId must be valid"),
+]
 
 const cancelRideValidator = [
-  param("rideId").trim().notEmpty().withMessage("rideId is required"),
-  body("userId").trim().notEmpty().withMessage("userId is required"),
-];
+  param("rideId").isMongoId().withMessage("rideId must be valid"),
+  body("userId").trim().notEmpty().withMessage("userId is required").isMongoId().withMessage("userId must be valid"),
+  body("reason").optional().isString().trim().isLength({ max: 200 }).withMessage("reason max 200 chars"),
+]
 
 const completeRideValidator = [
-  param("rideId").isString().notEmpty().withMessage("rideId is required"),
-  body("userId").trim().notEmpty().withMessage("userId is required"),
-  body("paymentMethod")
-    .optional()
-    .isIn(["cash", "card", "wallet", "UPI"])
-    .withMessage("Invalid paymentMethod"),
-  body("userRating")
-    .optional()
-    .isInt({ min: 1, max: 5 })
-    .withMessage("userRating must be 1-5"),
-  body("driverRating")
-    .optional()
-    .isInt({ min: 1, max: 5 })
-    .withMessage("driverRating must be 1-5"),
-];
+  param("rideId").isMongoId().withMessage("rideId must be valid"),
+  body("userId").trim().notEmpty().withMessage("userId is required").isMongoId().withMessage("userId must be valid"),
+  body("paymentMethod").optional().isIn(["cash", "card", "wallet", "UPI"]).withMessage("Invalid paymentMethod"),
+  body("userRating").optional().isInt({ min: 1, max: 5 }).withMessage("userRating must be 1-5"),
+  body("driverRating").optional().isInt({ min: 1, max: 5 }).withMessage("driverRating must be 1-5"),
+  body("userComment").optional().isString().trim().isLength({ max: 500 }).withMessage("userComment max 500 chars"),
+  body("driverComment").optional().isString().trim().isLength({ max: 500 }).withMessage("driverComment max 500 chars"),
+]
 
 module.exports = {
+  sendOtpValidator,
   customerRegisterValidator,
   customerLoginValidator,
   customerVerifyOtpValidator,
   customerResendOtpValidator,
-  estimateFareQueryValidator,
+  nearbyDriversQueryValidator,
   requestRideBodyValidator,
   activeRideQueryValidator,
   cancelRideValidator,

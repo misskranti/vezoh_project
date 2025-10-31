@@ -2,22 +2,71 @@ const { body, param } = require("express-validator")
 
 // Auth
 const driverRegisterValidator = [
-  body("name").trim().isLength({ min: 2 }).withMessage("Name is required"),
+  body("name")
+    .trim()
+    .notEmpty()
+    .withMessage("Name is required")
+    .isLength({ min: 2, max: 50 })
+    .withMessage("Name must be 2-50 characters"),
   body("email").trim().isEmail().withMessage("Valid email required").normalizeEmail(),
-  body("phone").trim().isLength({ min: 10 }).withMessage("Valid phone required"),
+  body("phone")
+    .trim()
+    .notEmpty()
+    .withMessage("Phone is required")
+    .custom((value) => {
+      const cleaned = value.replace(/\s/g, "")
+      if (!isValidPhone(cleaned)) {
+        throw new Error("Phone number must be a valid 10-digit Indian number")
+      }
+      return true
+    }),
 ]
 
-const driverLoginValidator = [body("email").trim().isEmail().withMessage("Valid email required").normalizeEmail()]
+const driverLoginValidator = [
+  body("email")
+    .trim()
+    .notEmpty()
+    .withMessage("Email is required")
+    .isEmail()
+    .withMessage("Valid email required")
+    .normalizeEmail(),
+]
 
 const driverVerifyOtpValidator = [
-  body("email").trim().isEmail().withMessage("Valid email required").normalizeEmail(),
-  body("otp").trim().isLength({ min: 4, max: 6 }).isNumeric().withMessage("Valid OTP required"),
-  body("type").isIn(["registration", "login"]).withMessage("Invalid verification type"),
+  body("email")
+    .trim()
+    .notEmpty()
+    .withMessage("Email is required")
+    .isEmail()
+    .withMessage("Valid email required")
+    .normalizeEmail(),
+  body("otp")
+    .trim()
+    .notEmpty()
+    .withMessage("OTP is required")
+    .isLength({ min: 4, max: 6 })
+    .isNumeric()
+    .withMessage("Valid OTP required"),
+  body("type")
+    .notEmpty()
+    .withMessage("Type is required")
+    .isIn(["registration", "login"])
+    .withMessage("Invalid verification type"),
 ]
 
 const driverResendOtpValidator = [
-  body("email").trim().isEmail().withMessage("Valid email required").normalizeEmail(),
-  body("type").isIn(["registration", "login"]).withMessage("Invalid verification type"),
+  body("email")
+    .trim()
+    .notEmpty()
+    .withMessage("Email is required")
+    .isEmail()
+    .withMessage("Valid email required")
+    .normalizeEmail(),
+  body("type")
+    .notEmpty()
+    .withMessage("Type is required")
+    .isIn(["registration", "login"])
+    .withMessage("Invalid verification type"),
 ]
 
 // Services
@@ -40,8 +89,7 @@ const serviceParamValidator = [
     .notEmpty()
     .withMessage("service is required")
     .bail()
-    .not()
-    .isInt()
+    .isIn(["ride", "courier", "freight"])
     .withMessage("Invalid service selection"),
 ]
 

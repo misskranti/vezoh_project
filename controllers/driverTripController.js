@@ -111,6 +111,22 @@ exports.progressUpdate = async (req, res) => {
     const { rideId } = req.params
     const { progressPercent, remainingMin, distanceKm } = req.body
 
+    if (typeof progressPercent !== "number") {
+      return res.status(400).json({ success: false, message: "progressPercent is required and must be a number" })
+    }
+
+    if (progressPercent < 0 || progressPercent > 100) {
+      return res.status(400).json({ success: false, message: "progressPercent must be between 0 and 100" })
+    }
+
+    if (typeof remainingMin === "number" && remainingMin < 0) {
+      return res.status(400).json({ success: false, message: "remainingMin cannot be negative" })
+    }
+
+    if (typeof distanceKm === "number" && distanceKm < 0) {
+      return res.status(400).json({ success: false, message: "distanceKm cannot be negative" })
+    }
+
     const ride = await Ride.findById(rideId)
     if (!ride) return res.status(404).json({ success: false, message: "Ride not found" })
     

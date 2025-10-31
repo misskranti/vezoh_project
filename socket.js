@@ -1,4 +1,5 @@
 const socketIo = require("socket.io");
+const handleSocketConnection = require("./controllers/socketAuth");
 const userModel = require("./models/user");
 const DriverModel = require("./models/driver");
 
@@ -12,8 +13,10 @@ function initializeSocket(server) {
     },
   });
 
+  handleSocketConnection(io);
+
   io.on("connection", (socket) => {
-    console.log(`✅ Client connected: ${socket.id}`);
+    console.log(`Client connected: ${socket.id}`);
 
     // --- JOIN EVENT ---
     socket.on("join", async (data) => {
@@ -21,22 +24,22 @@ function initializeSocket(server) {
         const { userId, userType } = data;
 
         if (userType === "user") {
-          console.log("📱 User joined:", userId);
+          console.log("User joined:", userId);
           await userModel.findByIdAndUpdate(
             userId,
-            { socketId: socket.id },
-            { new: true }
-          );
+             { socketId: socket.id },
+              { new: true }
+            );
         } else if (userType === "driver") {
-          console.log("🚗 Driver joined:", userId);
+          console.log("Driver joined:", userId);
           await DriverModel.findByIdAndUpdate(
             userId,
-            { socketId: socket.id },
-            { new: true }
-          );
+             { socketId: socket.id },
+              { new: true }
+            );
         }
       } catch (err) {
-        console.error("❌ Error in join:", err);
+        console.error("Error in join:", err);
       }
     });
 
@@ -45,7 +48,7 @@ function initializeSocket(server) {
       try {
         const { userId, location } = data;
 
-        console.log("📍 Location update received:", data);
+        console.log("Location update received:", data);
 
         if (!location || !location.ltd || !location.lng) {
           return socket.emit("error", { message: "Invalid location data" });
@@ -59,25 +62,24 @@ function initializeSocket(server) {
         );
 
         if (!driver) {
-          console.log("❌ Driver not found in DB");
+          console.log("Driver not found in DB")
           return;
         }
 
-        console.log(`✅ Driver ${userId} location updated:`, driver.location);
-
+        console.log(`Driver ${userId} location updated:`, driver.location);
         // Broadcast to all connected users
         io.emit("driver-location-update", {
           driverId: userId,
           location: driver.location,
         });
       } catch (err) {
-        console.error("❌ Error in update-location-driver:", err);
+        console.error("Error in update-location-driver:", err);
       }
     });
 
     // --- DISCONNECT EVENT ---
     socket.on("disconnect", () => {
-      console.log(`🚫 Client disconnected: ${socket.id}`);
+      console.log(`Client disconnected: ${socket.id}`);
     });
   });
 }
@@ -87,7 +89,7 @@ const sendMessageToSocketId = (socketId, messageObject) => {
   if (io) {
     io.to(socketId).emit(messageObject.event, messageObject.data);
   } else {
-    console.log("⚠️ Socket.io not initialized.");
+    console.log("Socket.io not initialized.");
   }
 };
 

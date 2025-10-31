@@ -4,11 +4,12 @@ const router = express.Router();
 // Middleware
 const { auth } = require("../middleware/auth");
 const {
+  sendOtpValidator,
   customerRegisterValidator,
   customerLoginValidator,
   customerVerifyOtpValidator,
   customerResendOtpValidator,
-  estimateFareQueryValidator: nearbyDriversQueryValidator,
+  nearbyDriversQueryValidator,
   requestRideBodyValidator,
   activeRideQueryValidator,
   cancelRideValidator,
@@ -41,7 +42,7 @@ const {
 // ==============================
 
 // User Registration
-router.post("/send-otp", authController.sendUserEmailOtp);
+router.post("/send-otp", sendOtpValidator, throwError, authController.sendUserEmailOtp);
 router.post("/complete_profile", customerRegisterValidator, throwError, authController.completeProfile);
 
 // Email Verification
