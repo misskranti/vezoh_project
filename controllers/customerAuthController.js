@@ -122,8 +122,7 @@ exports.completeProfile = async (req, res) => {
       success: true,
       message: "Profile completed successfully.",
       data: {
-        id: updateUserProfile._id.toString(),
-        token: token,
+        id: updateUserProfile._id.toString()
       },
     });
   } catch (err) {
