@@ -22,7 +22,7 @@ module.exports.startRide = async ({ rideId, otp, driver }) => {
     throw new Error("Ride not accepted");
   }
 
-  if (ride.OTPForStartRide !== otp) {
+  if (ride.OTPForStartRide !== parseInt(otp)) {
     throw new Error("Invalid OTP");
   }
 
@@ -31,7 +31,8 @@ module.exports.startRide = async ({ rideId, otp, driver }) => {
       _id: rideId,
     },
     {
-      status: "Started",
+      status: "started",
+      "timeline.startedAt": new Date(),
     },
     { new: true }
   );

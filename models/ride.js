@@ -33,7 +33,7 @@ const rideSchema = new mongoose.Schema(
     },
     vehicleType: {
       type: String,
-      enum: ["bike", "auto", "car", "truck"],
+      enum: ["bike", "auto", "car", "minitruck", "truck"],
       required: true,
     },
     fare: {
@@ -63,7 +63,7 @@ const rideSchema = new mongoose.Schema(
         "in_progress",
         "completed",
         "cancelled",
-        "Started",
+        "started",
       ],
       default: "requested",
     },
@@ -91,9 +91,10 @@ const rideSchema = new mongoose.Schema(
       requested: { type: Date, default: Date.now },
       acceptedAt: Date,
       driverAssignedAt: Date,
-      pickupAt: Date,
+      pickedupAt: Date,
       startedAt: Date,
       completedAt: Date,
+      deliveriedAt: Date,
       cancelledAt: Date,
     },
     serviceDetails: {
@@ -125,10 +126,14 @@ const rideSchema = new mongoose.Schema(
           type: String,
         },
       },
-    },
-    preDeliveryOTP: {
+      preDeliveryOTP: {
       type: Number,
       default: 0,
+    },
+     preDeliveryOTPVerified: {
+      type: Boolean,
+      default: false,
+    },
     },
   },
   {

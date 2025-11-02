@@ -1,15 +1,16 @@
 const { validationResult } = require("express-validator");
 const Driver = require("../models/driver");
 const Vehicle = require("../models/vehicle.js");
-const Ride = require("../models/ride");
+const Ride = require("../models/ride.js");
 const GoogleMapsService = require("../utils/googleMapsService");
 const { generateOTP } = require("../utils/helpers.js");
-const rideService = require("../utils/services.js");
+// const rideService = require("../utils/services.js");
 const { sendMessageToSocketId } = require("../socket.js");
+const { sendEmailVerificationOTP } = require("../utils/emailService");
+const driver = require("../models/driver");
 
-// FIND NEARBY DRIVERS
-
-exports.findDriverNearBy = async (req, res) => {
+// FIND NEARBY DRIVERS for curior  (["car", "auto","minitruck", "truck"])
+exports.findDriverNearByForCurior = async (req, res) => {
   try {
     const {
       latitude,
@@ -41,13 +42,14 @@ exports.findDriverNearBy = async (req, res) => {
         $near: {
           $geometry: {
             type: "Point",
-            coordinates: [parseFloat(longitude), parseFloat(latitude)],
+            // coordinates: [parseFloat(longitude), parseFloat(latitude)],
           },
         },
       },
       status: "online",
       "availability.isAvailable": true,
       services: serviceType,
+       vehicleType: { $in: ["car", "auto","minitruck", "truck"] }, //for curior
     })
       .limit(20)
       .lean();
@@ -153,29 +155,56 @@ exports.findDriverNearBy = async (req, res) => {
   }
 };
 
-// REQUEST RIDE
 
-exports.createRide = async (req, res) => {
+// REQUEST RIDE FOR CURIOR
+
+exports.createRideForCurior = async (req, res) => {
   try {
     const {
       pickup,
       destination,
       driverId,
       vehicleType,
-      serviceType = "ride",
+      serviceType = "curior",
       offeredFare,
       paymentMethod = "cash",
+      ItemName,
+      description,
+      weight,
       userId,
       rideNotes,
+      Recipient,
+      phone,
+      email,
     } = req.body;
-    if (!pickup || !destination || !driverId || !vehicleType || !userId)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Pickup, destination, driver, vehicle type, and userId are required",
-        });
+    if (
+      !pickup ||
+      !destination ||
+      !driverId ||
+      !vehicleType ||
+      !userId ||
+      !ItemName ||
+      !description ||
+      !Recipient
+    )
+      return res.status(400).json({
+        success: false,
+        message:
+          "Pickup, destination, driver, vehicle type, ItemName, description, Recipient and userId are required",
+      });
+
+        const kg = parseFloat(kilogram || 0);
+    const gramInKg = parseFloat(gram || 0) / 1000; // 1000 grams = 1 kg
+
+    const totalWeightKg = kg + gramInKg;
+
+    //  Range check (between 1 and 100 KG)
+    if (totalWeightKg < 1 || totalWeightKg > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Weight should be between 1 and 100 kilograms",
+      });
+    }
 
     const driver = await Driver.findById(driverId);
     if (
@@ -198,9 +227,10 @@ exports.createRide = async (req, res) => {
       duration = distanceData.duration.value / 60;
 
       const fareRates = {
-        bike: { base: 20, perKm: 8 },
         auto: { base: 30, perKm: 12 },
         car: { base: 50, perKm: 15 },
+        minitruck: { base: 80, perKm: 20 },
+        truck: { base: 120, perKm: 25}
       };
       const rate = fareRates[vehicleType] || fareRates.auto;
       estimatedFare = Math.round(rate.base + distance * rate.perKm);
@@ -208,7 +238,7 @@ exports.createRide = async (req, res) => {
       distance = 5;
       duration = 15;
       estimatedFare =
-        vehicleType === "bike" ? 60 : vehicleType === "auto" ? 80 : 120;
+        vehicleType === "auto" ? 420 : vehicleType === "car" ? 825 : 1700;
     }
 
     const ride = new Ride({
@@ -249,42 +279,27 @@ exports.createRide = async (req, res) => {
       rideNotes: rideNotes || "",
       status: "requested",
       OTPForStartRide: Math.floor(1000 + Math.random() * 9000),
-      // requestedAt: new Date(),
+    //   requestedAt: new Date(),
+      serviceDetails: {
+        name: ItemName,
+        description: description,
+        weight: weight,
+        deliverTo: {
+        name: Recipient,
+        phone: phone,
+        email: email,
+      },
+      preDeliveryOTP: 0,
+      preDeliveryOTPVerified: false,
+
+      },
     });
     const rideCreated = await Ride.create(ride);
     await rideCreated.populate("driver", "name phone vehicle rating");
-    // not required if driver is not accepted the ride yet
-    // // 🔥 Send socket update to driver — new ride request
-    // if (driver.socketId) {
-    //   sendMessageToSocketId(driver.socketId, {
-    //     event: "new-ride-request",
-    //     data: {
-    //       rideId: rideCreated._id,
-    //       pickup: rideCreated.pickup,
-    //       destination: rideCreated.destination,
-    //       distance: rideCreated.distance,
-    //       duration: rideCreated.duration,
-    //       fare: rideCreated.fare,
-    //     },
-    //   });
-    // }
-
-    // // 🔥 Optional: also notify user with driver distance
-    // // (for simplicity, we’ll just use same distance info)
-    // if (rideCreated.user?.socketId) {
-    //   sendMessageToSocketId(rideCreated.user.socketId, {
-    //     event: "driver-distance",
-    //     data: {
-    //       driverId: driver._id,
-    //       distance: rideCreated.distance,
-    //       duration: rideCreated.duration,
-    //     },
-    //   });
-    // }
 
     return res.status(201).json({
       success: true,
-      message: "Ride requested successfully",
+      message: "Ride for Curior requested successfully",
       data: {
         rideId: rideCreated._id,
         status: rideCreated.status,
@@ -295,97 +310,23 @@ exports.createRide = async (req, res) => {
         fare: rideCreated.fare,
         distance: rideCreated.distance,
         duration: rideCreated.duration,
+        ItemName: rideCreated.serviceDetails.name,
+        Description: rideCreated.serviceDetails.description,
+        weight: rideCreated.serviceDetails.weight,
+        DeliverTo: rideCreated.serviceDetails.deliverTo.name,
       },
     });
   } catch (error) {
-    console.error("Ride request error:", error.message);
-    res.status(500).json({ success: false, message: "Failed to request ride" });
-  }
-};
-
-// GET ACTIVE RIDE(After create the ride)
-
-exports.activeRide = async (req, res) => {
-  try {
-    const { userId } = req.query;
-    if (!userId)
-      return res
-        .status(400)
-        .json({ success: false, message: "UserId is required" });
-
-    const activeRide = await Ride.findOne({
-      user: userId,
-      status: {
-        $in: 
-        [
-        "requested",
-        "accepted",
-        "driver_assigned",
-        "pickup",
-        "in_progress",
-        "completed",
-        "started"
-      ]
-      },
-    })
-      .populate("driver", "name phone vehicle location rating profileImage")
-      .sort({ createdAt: -1 });
-
-    if (!activeRide)
-      return res.json({
-        success: true,
-        data: null,
-        message: "No active ride found",
-      });
-
-    let driverETA = null;
-    if (
-      ["accepted", "arriving"].includes(activeRide.status) &&
-      activeRide.driver?.location?.coordinates
-    ) {
-      try {
-        const [lng, lat] = activeRide.driver.location.coordinates;
-        const etaData = await GoogleMapsService.calculateDistance(
-          { lat, lng },
-          { lat: activeRide.pickup.latitude, lng: activeRide.pickup.longitude },
-          "driving"
-        );
-        driverETA = {
-          text: etaData.duration.text,
-          value: etaData.duration.value,
-          minutes: Math.ceil(etaData.duration.value / 60),
-        };
-      } catch (error) {
-        console.warn("Failed to calculate driver ETA:", error.message);
-      }
-    }
-
-    res.json({
-      success: true,
-      data: {
-        rideId: activeRide._id,
-        status: activeRide.status,
-        driver: activeRide.driver,
-        pickup: activeRide.pickup,
-        destination: activeRide.destination,
-        fare: activeRide.fare,
-        distance: activeRide.distance,
-        duration: activeRide.duration,
-        paymentMethod: activeRide.paymentMethod,
-        driverETA,
-      },
-    });
-  } catch (error) {
-    console.error("Get active ride error:", error);
+    console.error("Ride for curior request error:", error.message);
     res
       .status(500)
-      .json({ success: false, message: "Failed to get active ride" });
+      .json({ success: false, message: "Failed to request ride for curior" });
   }
 };
 
-// Confirm Ride
+// Confirm Ride by driver
 
-exports.acceptedRideByDriver = async (req, res) => {
+exports.acceptedCuriorRideByDriverr = async (req, res) => {
   try {
     const rideId = req.params.rideId;
     const { driverId, socketId } = req.body; //socketid of user for sending ride confired msg
@@ -397,7 +338,6 @@ exports.acceptedRideByDriver = async (req, res) => {
           message: "Ride d and Driver Id both are required",
         });
 
-       
     //  console.log(req.body,"===ride id ====>",rideId)
     const rideConfirmed = await Ride.findOneAndUpdate(
       { _id: rideId, driver: driverId, status: "requested" },
@@ -425,9 +365,10 @@ exports.acceptedRideByDriver = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
-//Start ride after getting confirmation with Driver using otp
 
-exports.startRide = async (req, res) => {
+//Start Curior ride after getting confirmation with Driver using otp
+
+exports.startCurior = async (req, res) => {
   try {
     const { rideId, otp, driverId, socketId } = req.body;
     const ride = await rideService.startRide({ rideId, otp, driverId });
@@ -487,9 +428,9 @@ exports.startRide = async (req, res) => {
   }
 };
 
-// CANCEL RIDE
+// CANCEL Curior
 
-exports.cancelRide = async (req, res) => {
+exports.cancelCurior = async (req, res) => {
   try {
     const { rideId } = req.params;
     const { reason, userId } = req.body;
@@ -506,15 +447,10 @@ exports.cancelRide = async (req, res) => {
     if (!cancellableStatuses.includes(ride.status))
       return res
         .status(400)
-        .json({ success: false, message: "Ride cannot be cancelled now" });
+        .json({ success: false, message: "You can't denie/cancel for curior pick-up now!" });
 
-    // const CANCELLATION_FEE = 25;
-    // ride.status = "cancelled";
-    // ride.cancellationReason = reason;
-    // ride.cancellationFee = CANCELLATION_FEE;
-    // ride.cancelledAt = new Date();
-
-    const canceledRide = await Ride.findByIdAndUpdate(
+ 
+    const canceledCuriorRide = await Ride.findByIdAndUpdate(
       { _id: rideId },
       {
         $set: {
@@ -529,30 +465,29 @@ exports.cancelRide = async (req, res) => {
 
     // await ride.save();
 
-    if (canceledRide.driver)
-      await Driver.findByIdAndUpdate(canceledRide.driver, {
+    if (canceledCuriorRide.driver)
+      await Driver.findByIdAndUpdate(canceledCuriorRide.driver, {
         "availability.isAvailable": true,
       });
 
     return res.status(200).json({
       success: true,
-      message: "Ride cancelled",
+      message: "Curior pick-up cancelled successfully",
       data: {
-        rideId: canceledRide._id,
-        status: canceledRide.status,
-        cancellationFee: canceledRide.cancellationFee,
-        // refundAmount: Math.max(0, Number(canceledRide.fare.offered) - Number(canceledRide.cancellationFee)), //how can you refund before payment done by user ?
+        rideId: canceledCuriorRide._id,
+        status: canceledCuriorRide.status,
+        cancellationFee: canceledCuriorRide.cancellationFee
       },
     });
   } catch (error) {
-    console.error("Cancel ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to cancel ride" });
+    console.error("Cancel Curior ride error:", error);
+    res.status(500).json({ success: false, message: "Failed to cancel curior ride" });
   }
 };
 
-// COMPLETE RIDE
+// COMPLETE RIDE FOR CURIOR
 
-exports.rideCompleted = async (req, res) => {
+exports.curiorRideCompleted = async (req, res) => {
   try {
     const { rideId } = req.params;
     const { userId, paymentMethod } = req.body;
@@ -579,7 +514,7 @@ exports.rideCompleted = async (req, res) => {
 
     paymentMethod ? paymentMethod : "cash";
 
-    const completedRide = await Ride.findByIdAndUpdate(
+    const completedCuriorRide = await Ride.findByIdAndUpdate(
       { _id: rideId },
       {
         $set: {
@@ -592,28 +527,28 @@ exports.rideCompleted = async (req, res) => {
       { new: true }
     );
 
-    if (completedRide.driver)
-      await Driver.findByIdAndUpdate(completedRide.driver, {
+    if (completedCuriorRide.driver)
+      await Driver.findByIdAndUpdate(completedCuriorRide.driver, {
         "availability.isAvailable": true,
       });
 
     return res.status(200).json({
       success: true,
-      message: "Ride has completed successfully",
+      message: "Curior delivered successfully",
       data: {
-        rideId: completedRide._id,
-        status: completedRide.status,
+        rideId: completedCuriorRide._id,
+        status: completedCuriorRide.status,
       },
     });
   } catch (error) {
-    console.error("Cancel ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to cancel ride" });
+    console.error("Complete Curiore error:", error);
+    res.status(500).json({ success: false, message: "Failed to Complete Curior" });
   }
 };
 
 // GIVE Rating for both user and driver
 
-exports.rating = async (req, res) => {
+exports.ratingForCurior = async (req, res) => {
   try {
     const { rideId } = req.params;
     const { userId, userRating, driverRating, userComment, driverComment } =
@@ -665,63 +600,118 @@ exports.rating = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Cancel ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to cancel ride" });
+    console.error("Giving Rating Curior error:", error);
+    res.status(500).json({ success: false, message: "Failed to Rating Curior" });
   }
 };
 
-exports.getRideHistory = async (req, res) => {
+
+//---------------ONLY FOR DRIVER BEFORE DELIVERY  -----------------
+// send OTP before delivery
+
+exports.sendOTPBeforeDelivery = async (req, res) => {
   try {
-    const { userId, page = 1, limit = 10, status } = req.query;
-    if (!userId)
+    const { rideId } = req.params;
+    const { driverId } = req.body;
+
+    if (!rideId || !driverId) {
+      return res.status(400).json({
+        status: false,
+        message: "Ride ID and Driver ID are both required.",
+      });
+    }
+
+    const ride = await Ride.findOne({
+      _id: rideId,
+      driver: driverId,
+      status: "started",
+    }).populate("user", "_id name email phone");
+
+    if (!ride) {
+      return res.status(404).json({
+        success: false,
+        message: "Ride not found or not started.",
+      });
+    }
+   if(ride.serviceDetails.preDeliveryOTPVerified){     
+  return res.status(400).json({
+        success: false,
+        message: "OTP already sent and verified.",
+      });       
+   }
+    const otp = Math.floor(1000 + Math.random() * 9000);
+
+      let targetName = ride.user.name;
+      await sendEmailVerificationOTP(ride.user.email, otp, targetName);
+    
+
+    ride.serviceDetails.preDeliveryOTP = otp;
+    await ride.save();
+
+    console.log(`[DEBUG] OTP ${otp} sent successfully to ${targetName}`);
+
+    return res.status(200).json({
+      success: true,
+      message: `OTP sent to ${targetName} successfully!`,
+    });
+  } catch (err) {
+    console.error(`[ERROR] sendOTPBeforeDelivery:`, err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error: " + err.message,
+    });
+  }
+};
+
+//verify OTP before delivery
+
+exports.verifyOTPBeforeDelivery = async (req, res) => {
+  try {
+    const { rideId } = req.params;
+    const { otp, driverId } = req.body;
+    if (!rideId || !driverId || !otp)
       return res
         .status(400)
-        .json({ success: false, message: "UserId is required" });
+        .json({
+          success: false,
+          message: "Ride ID, DriverId and OTP all are required",
+        });
 
-    const query = { user: userId };
-    if (status) query.status = status;
-    else query.status = { $in: ["completed", "cancelled"] };
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const rides = await Ride.find(query)
-      .populate("driver", "name phone vehicle rating")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-    const totalRides = await Ride.countDocuments(query);
-
-    const ridesWithDetails = rides.map((ride) => ({
-      rideId: ride._id,
-      status: ride.status,
-      driver: ride.driver,
-      pickup: ride.pickup,
-      destination: ride.destination,
-      fare: {
-        final: ride.fare.final || ride.fare.offered,
-        paymentMethod: ride.paymentMethod,
-      },
-      distance: ride.distance,
-      duration: ride.duration,
-      date: ride.createdAt,
-      completedAt: ride.completedAt,
-      cancelledAt: ride.cancelledAt,
-    }));
-
-    res.json({
-      success: true,
-      data: {
-        rides: ridesWithDetails,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalRides / parseInt(limit)),
-          totalRides,
-        },
-      },
+    const getRide = await Ride.findOne({
+      rideId,
+      driver: driverId,
+      status: "started",
     });
-  } catch (error) {
-    console.error("Get ride history error:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to get ride history" });
+    if (!getRide)
+      return res
+        .status(404)
+        .json({ success: false, message: "Ride not found or not started." });
+ if(getRide.serviceDetails.preDeliveryOTPVerified){     
+  return res.status(400).json({
+        success: false,
+        message: "OTP already verified .",
+      });       
+   }
+    if (getRide.serviceDetails.preDeliveryOTP !== parseInt(otp)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid OTP provided." });
+    }
+    getRide.serviceDetails.preDeliveryOTPVerified = true;
+    await getRide.save();   
+
+    return res
+      .status(200)
+      .json({
+        success: true,
+        message:
+          "OTP verified successfully. You can proceed with the delivery.",
+      });
+  } catch (err) {
+    console.error(`[ERROR] verifyOTPBeforeDelivery:`, err);
+    return res.status(500).json({
+      success: false,
+      error: "Internal Server Error: " + err.message,
+    });
   }
 };

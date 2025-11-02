@@ -37,6 +37,10 @@ const {
   estimateFare,
 } = require("../controllers/mapController.js");
 
+const {findDriverNearByForCurior, createRideForCurior, acceptedCuriorRideByDriverr, startCurior, cancelCurior, curiorRideCompleted, ratingForCurior} = require("../controllers/curriorController.js");
+
+const {findDriverNearByForFreight, createRideForFreight, acceptedFreightRideByDriverr, startFreight, cancelFreight, freightRideCompleted, ratingForFreight} = require("../controllers/freightController.js");
+
 // ==============================
 // AUTHENTICATION ROUTES
 // ==============================
@@ -105,5 +109,59 @@ router.put("/rideCompleted/:rideId", auth, completeRideValidator, throwError, ri
 
 // Rate Ride
 router.put("/rating/:rideId", auth, completeRideValidator, throwError, rating);
+
+
+// ==============================
+// CURIOR MANAGEMENT ROUTES
+// ==============================
+
+// Find Nearby Drivers for Curior
+router.get("/nearby_drivers_for_curior", auth, findDriverNearByForCurior);
+
+// Request a curior Ride
+router.post("/create_curior", auth, createRideForCurior);
+
+//Confirm curior Ride 
+router.patch("/currior_ride_accepted/:rideId", auth, acceptedCuriorRideByDriverr)
+
+//start curier Ride
+router.patch("/start_currior", auth, startCurior);
+
+// Cancel curier pickup
+router.put("/cancel_curior_pickup/:rideId", auth, cancelCurior);
+
+// Complete curior Ride(curior delevered)
+router.put("/curior_delivered/:rideId", auth, curiorRideCompleted);
+
+// Rate curior Ride
+router.put("/curior_rating/:rideId", auth, ratingForCurior);
+
+
+// ==============================
+// FREIGHT MANAGEMENT ROUTES
+// ==============================
+
+// Find Nearby Drivers for Freight
+router.get("/nearby_drivers_for_freight", auth, findDriverNearByForFreight);    
+
+// Request a Freight Ride
+router.post("/create_freight", auth, createRideForFreight); 
+
+//Confirm Freight Ride
+router.patch("/freight_accepted/:rideId", auth, acceptedFreightRideByDriverr);
+
+//start Freight Ride
+router.patch("/start_freight", auth, startFreight);
+
+// Cancel Freight pickup
+router.put("/cancel_freight_pickup/:rideId", auth, cancelFreight);
+
+// Complete Freight Ride(freight delevered)
+router.put("/freight_completed/:rideId", auth, freightRideCompleted);
+
+// Rate Freight Ride     
+router.put("/freight_rating/:rideId", auth, ratingForFreight);
+
+
 
 module.exports = router;

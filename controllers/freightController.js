@@ -1,65 +1,41 @@
 const { validationResult } = require("express-validator");
-const Driver = require("../models/driver");
+const Driver = require("../models/driver.js");
 const Vehicle = require("../models/vehicle.js");
-const Ride = require("../models/ride");
-const GoogleMapsService = require("../utils/googleMapsService");
+const Ride = require("../models/ride.js");
+const GoogleMapsService = require("../utils/googleMapsService.js");
 const { generateOTP } = require("../utils/helpers.js");
-const rideService = require("../utils/services.js");
+// const rideService = require("../utils/services.js");
 const { sendMessageToSocketId } = require("../socket.js");
+const { sendEmailVerificationOTP } = require("../utils/emailService.js");
+const driver = require("../models/driver.js");
 
-// FIND NEARBY DRIVERS
-
-exports.findDriverNearBy = async (req, res) => {
+// FIND NEARBY DRIVERS FOR GOODS  (["minitruck", "truck"])
+exports.findDriverNearByForFreight = async (req, res) => {
   try {
-    const {
-      latitude,
-      longitude,
-      radius = 5000,
-      serviceType,
-      vehicleType,
-      destinationLat,
-      destinationLng,
-    } = req.query;
+    const {latitude,longitude,radius = 5000,serviceType,vehicleType,destinationLat,destinationLng} = req.query;
 
-    if (
-      !latitude ||
-      !longitude ||
-      !serviceType ||
-      !destinationLat ||
-      !destinationLng
-    ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "latitude, longitude, serviceType, destinationLat, and destinationLng are required",
-        });
+    if (!latitude || !longitude || !serviceType || !destinationLat ||!destinationLng) {
+      return res.status(400).json({message:"latitude, longitude, serviceType, destinationLat, and destinationLng are required"});
+    }
+
+    const userCoords = validateCoordinates(latitude, longitude)
+    const destCoords = validateCoordinates(destinationLat, destinationLng)
+
+    if (!userCoords || !destCoords) {
+      return res.status(400).json({ success: false, message: "Invalid latitude or longitude values" })
     }
 
     const drivers = await Driver.find({
-      location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [parseFloat(longitude), parseFloat(latitude)],
-          },
-        },
-      },
+      location: { $near: { $geometry: { type: "Point", coordinates: [userCoords.lng, userCoords.lat] }} },
       status: "online",
       "availability.isAvailable": true,
       services: serviceType,
+       vehicleType: { $in: ["minitruck", "truck"] }, //for curior
     })
       .limit(20)
       .lean();
 
-    if (!drivers.length)
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Drivers are not available in this range",
-          data: [],
-        });
+    if (!drivers.length) return res.status(404).json({success:false, message:"Drivers are not available in this range", data:[]});
 
     const driverIds = drivers.map((d) => d._id);
     const vehicles = await Vehicle.find({ driver: { $in: driverIds } }).lean();
@@ -68,57 +44,38 @@ exports.findDriverNearBy = async (req, res) => {
       bike: { base: 20, perKm: 8, perMin: 1, surge: 1.0 },
       auto: { base: 30, perKm: 12, perMin: 1.5, surge: 1.0 },
       car: { base: 50, perKm: 15, perMin: 2, surge: 1.0 },
+      truck: { base: 80, perKm: 25, perMin: 3, surge: 1.0 },
     };
 
-    const driverResults = await Promise.all(
-      drivers.map(async (driver) => {
-        const vehicle = vehicles.find(
-          (v) => v.driver.toString() === driver._id.toString()
-        );
+    const driverResults = await Promise.all(drivers.map(async (driver) => {
+        const vehicle = vehicles.find((v) => v.driver.toString() === driver._id.toString());
         if (vehicleType && vehicle?.vehicle?.type !== vehicleType) return null;
 
         let etaData = null;
         try {
           etaData = await GoogleMapsService.calculateDistance(
-            {
-              lat: driver.location.coordinates[1],
-              lng: driver.location.coordinates[0],
-            },
-            { lat: parseFloat(latitude), lng: parseFloat(longitude) },
+            {lat: driver.location.coordinates[1],lng: driver.location.coordinates[0]},
+            { lat: userCoords.lat, lng: userCoords.lng },
             "driving"
           );
         } catch (err) {
-          console.warn(
-            "ETA calculation failed for driver:",
-            driver._id,
-            err.message
-          );
+          console.warn("ETA calculation failed for driver:",driver._id,err.message);
         }
 
         let fareEstimate = null;
         try {
           const distData = await GoogleMapsService.calculateDistance(
-            { lat: parseFloat(latitude), lng: parseFloat(longitude) },
-            {
-              lat: parseFloat(destinationLat),
-              lng: parseFloat(destinationLng),
-            },
+            { lat: userCoords.lat, lng: userCoords.lng },
+            {lat: destCoords.lat, lng: destCoords.lng },
             "driving"
           );
 
           const distanceKm = distData.distance.value / 1000;
           const durationMin = distData.duration.value / 60;
           const rate = fareRates[vehicleType || "auto"];
-          fareEstimate = Math.round(
-            (rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) *
-              rate.surge
-          );
+          fareEstimate = Math.round((rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) * rate.surge);
         } catch (err) {
-          console.warn(
-            "Fare calculation failed for driver:",
-            driver._id,
-            err.message
-          );
+          console.warn("Fare calculation failed for driver:",driver._id,err.message);
         }
 
         return {
@@ -127,24 +84,13 @@ exports.findDriverNearBy = async (req, res) => {
           phone: driver.phone,
           profileImage: driver.profileImage,
           rating: driver.rating,
-          location: {
-            lat: driver.location.coordinates[1],
-            lng: driver.location.coordinates[0],
-            address: driver.location.address,
-          },
+          location: {lat: driver.location.coordinates[1],lng: driver.location.coordinates[0],address: driver.location.address},
           vehicle: vehicle?.vehicle || null,
-          vehicleVerification: vehicle?.verificationStatus, //|| "pending",
+          vehicleVerification: vehicle?.verificationStatus || "pending",
           estimatedFare: fareEstimate,
-          eta: etaData
-            ? {
-                text: etaData.duration.text,
-                value: etaData.duration.value,
-                minutes: Math.ceil(etaData.duration.value / 60),
-              }
-            : null,
+        eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
         };
-      })
-    );
+    }));
 
     res.json(driverResults.filter(Boolean));
   } catch (error) {
@@ -153,30 +99,61 @@ exports.findDriverNearBy = async (req, res) => {
   }
 };
 
-// REQUEST RIDE
+// REQUEST FREIGHT RIDE
 
-exports.createRide = async (req, res) => {
+exports.createRideForFreight = async (req, res) => {
   try {
     const {
       pickup,
       destination,
       driverId,
       vehicleType,
-      serviceType = "ride",
+      serviceType = "curior",
       offeredFare,
       paymentMethod = "cash",
+      ItemName,
+      description,
+      weight,
+      quintal,
+      kilogram,
+      gram,
       userId,
       rideNotes,
+      Recipient,
+      phone,
+      email,
     } = req.body;
-    if (!pickup || !destination || !driverId || !vehicleType || !userId)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Pickup, destination, driver, vehicle type, and userId are required",
-        });
+    if (
+      !pickup ||
+      !destination ||
+      !driverId ||
+      !vehicleType ||
+      !userId ||
+      !ItemName ||
+      !description ||
+      !Recipient ||
+      !quintal ||
+      !kilogram ||
+      !gram
+    )
+      return res.status(400).json({
+        success: false,
+        message:
+          "Pickup, destination, driver, vehicle type, ItemName, description, Recipient, quintal, kilogram, gram, and userId are required",
+      });
+    const quintalInKg = parseFloat(quintal || 0) * 100; // 1 quintal = 100 kg
+    const kg = parseFloat(kilogram || 0);
+    const gramInKg = parseFloat(gram || 0) / 1000; // 1000 grams = 1 kg
 
+    const totalWeightKg = quintalInKg + kg + gramInKg;
+
+    //  Range check (between 1 and 2 quintals)
+    if (totalWeightKg < 100 || totalWeightKg > 200) {
+      return res.status(400).json({
+        success: false,
+        message: "Weight should be between 1 and 2 quintals (100kg to 200kg)",
+      });
+    }
     const driver = await Driver.findById(driverId);
     if (
       !driver ||
@@ -198,17 +175,16 @@ exports.createRide = async (req, res) => {
       duration = distanceData.duration.value / 60;
 
       const fareRates = {
-        bike: { base: 20, perKm: 8 },
-        auto: { base: 30, perKm: 12 },
-        car: { base: 50, perKm: 15 },
+        minitruck: { base: 80, perKm: 20 },
+        truck: { base: 120, perKm: 25}
       };
-      const rate = fareRates[vehicleType] || fareRates.auto;
+      const rate = fareRates[vehicleType] || fareRates.truck;
       estimatedFare = Math.round(rate.base + distance * rate.perKm);
     } catch (error) {
       distance = 5;
       duration = 15;
       estimatedFare =
-        vehicleType === "bike" ? 60 : vehicleType === "auto" ? 80 : 120;
+        vehicleType === "minitruck" ? 1700 : vehicleType === "truck" ? 3125 : 3500;
     }
 
     const ride = new Ride({
@@ -250,41 +226,29 @@ exports.createRide = async (req, res) => {
       status: "requested",
       OTPForStartRide: Math.floor(1000 + Math.random() * 9000),
       // requestedAt: new Date(),
+      serviceDetails: {
+        name: ItemName,
+        description: description,
+        weight: {
+          quintal: quintalInKg,
+          kilogram: kg,
+          gram: gramInKg,
+        },
+        deliverTo: {
+          name: Recipient,
+          phone: phone,
+          email: email,
+        },
+        preDeliveryOTP: 0,
+        preDeliveryOTPVerified: false,
+      },
     });
     const rideCreated = await Ride.create(ride);
     await rideCreated.populate("driver", "name phone vehicle rating");
-    // not required if driver is not accepted the ride yet
-    // // 🔥 Send socket update to driver — new ride request
-    // if (driver.socketId) {
-    //   sendMessageToSocketId(driver.socketId, {
-    //     event: "new-ride-request",
-    //     data: {
-    //       rideId: rideCreated._id,
-    //       pickup: rideCreated.pickup,
-    //       destination: rideCreated.destination,
-    //       distance: rideCreated.distance,
-    //       duration: rideCreated.duration,
-    //       fare: rideCreated.fare,
-    //     },
-    //   });
-    // }
-
-    // // 🔥 Optional: also notify user with driver distance
-    // // (for simplicity, we’ll just use same distance info)
-    // if (rideCreated.user?.socketId) {
-    //   sendMessageToSocketId(rideCreated.user.socketId, {
-    //     event: "driver-distance",
-    //     data: {
-    //       driverId: driver._id,
-    //       distance: rideCreated.distance,
-    //       duration: rideCreated.duration,
-    //     },
-    //   });
-    // }
 
     return res.status(201).json({
       success: true,
-      message: "Ride requested successfully",
+      message: "Ride for Freight requested successfully",
       data: {
         rideId: rideCreated._id,
         status: rideCreated.status,
@@ -295,97 +259,23 @@ exports.createRide = async (req, res) => {
         fare: rideCreated.fare,
         distance: rideCreated.distance,
         duration: rideCreated.duration,
+        ItemName: rideCreated.serviceDetails.name,
+        Description: rideCreated.serviceDetails.description,
+        weight: rideCreated.serviceDetails.weight,
+        DeliverTo: rideCreated.serviceDetails.deliverTo.name,
       },
     });
   } catch (error) {
-    console.error("Ride request error:", error.message);
-    res.status(500).json({ success: false, message: "Failed to request ride" });
-  }
-};
-
-// GET ACTIVE RIDE(After create the ride)
-
-exports.activeRide = async (req, res) => {
-  try {
-    const { userId } = req.query;
-    if (!userId)
-      return res
-        .status(400)
-        .json({ success: false, message: "UserId is required" });
-
-    const activeRide = await Ride.findOne({
-      user: userId,
-      status: {
-        $in: 
-        [
-        "requested",
-        "accepted",
-        "driver_assigned",
-        "pickup",
-        "in_progress",
-        "completed",
-        "started"
-      ]
-      },
-    })
-      .populate("driver", "name phone vehicle location rating profileImage")
-      .sort({ createdAt: -1 });
-
-    if (!activeRide)
-      return res.json({
-        success: true,
-        data: null,
-        message: "No active ride found",
-      });
-
-    let driverETA = null;
-    if (
-      ["accepted", "arriving"].includes(activeRide.status) &&
-      activeRide.driver?.location?.coordinates
-    ) {
-      try {
-        const [lng, lat] = activeRide.driver.location.coordinates;
-        const etaData = await GoogleMapsService.calculateDistance(
-          { lat, lng },
-          { lat: activeRide.pickup.latitude, lng: activeRide.pickup.longitude },
-          "driving"
-        );
-        driverETA = {
-          text: etaData.duration.text,
-          value: etaData.duration.value,
-          minutes: Math.ceil(etaData.duration.value / 60),
-        };
-      } catch (error) {
-        console.warn("Failed to calculate driver ETA:", error.message);
-      }
-    }
-
-    res.json({
-      success: true,
-      data: {
-        rideId: activeRide._id,
-        status: activeRide.status,
-        driver: activeRide.driver,
-        pickup: activeRide.pickup,
-        destination: activeRide.destination,
-        fare: activeRide.fare,
-        distance: activeRide.distance,
-        duration: activeRide.duration,
-        paymentMethod: activeRide.paymentMethod,
-        driverETA,
-      },
-    });
-  } catch (error) {
-    console.error("Get active ride error:", error);
+    console.error("Ride for Freight request error:", error.message);
     res
       .status(500)
-      .json({ success: false, message: "Failed to get active ride" });
+      .json({ success: false, message: "Failed to request ride for Freight" });
   }
 };
 
-// Confirm Ride
+// Confirm Freight Ride by driver
 
-exports.acceptedRideByDriver = async (req, res) => {
+exports.acceptedFreightRideByDriverr = async (req, res) => {
   try {
     const rideId = req.params.rideId;
     const { driverId, socketId } = req.body; //socketid of user for sending ride confired msg
@@ -397,7 +287,6 @@ exports.acceptedRideByDriver = async (req, res) => {
           message: "Ride d and Driver Id both are required",
         });
 
-       
     //  console.log(req.body,"===ride id ====>",rideId)
     const rideConfirmed = await Ride.findOneAndUpdate(
       { _id: rideId, driver: driverId, status: "requested" },
@@ -425,9 +314,10 @@ exports.acceptedRideByDriver = async (req, res) => {
     return res.status(500).json({ message: err.message });
   }
 };
-//Start ride after getting confirmation with Driver using otp
 
-exports.startRide = async (req, res) => {
+//Start Freight ride after getting confirmation with Driver using otp
+
+exports.startFreight = async (req, res) => {
   try {
     const { rideId, otp, driverId, socketId } = req.body;
     const ride = await rideService.startRide({ rideId, otp, driverId });
@@ -487,9 +377,9 @@ exports.startRide = async (req, res) => {
   }
 };
 
-// CANCEL RIDE
+// CANCEL Freight
 
-exports.cancelRide = async (req, res) => {
+exports.cancelFreight = async (req, res) => {
   try {
     const { rideId } = req.params;
     const { reason, userId } = req.body;
@@ -506,15 +396,10 @@ exports.cancelRide = async (req, res) => {
     if (!cancellableStatuses.includes(ride.status))
       return res
         .status(400)
-        .json({ success: false, message: "Ride cannot be cancelled now" });
+        .json({ success: false, message: "You can't denie/cancel for Goods pick-up now!" });
 
-    // const CANCELLATION_FEE = 25;
-    // ride.status = "cancelled";
-    // ride.cancellationReason = reason;
-    // ride.cancellationFee = CANCELLATION_FEE;
-    // ride.cancelledAt = new Date();
-
-    const canceledRide = await Ride.findByIdAndUpdate(
+ 
+    const canceledFreightRide = await Ride.findByIdAndUpdate(
       { _id: rideId },
       {
         $set: {
@@ -529,30 +414,29 @@ exports.cancelRide = async (req, res) => {
 
     // await ride.save();
 
-    if (canceledRide.driver)
-      await Driver.findByIdAndUpdate(canceledRide.driver, {
+    if (canceledFreightRide.driver)
+      await Driver.findByIdAndUpdate(canceledFreightRide.driver, {
         "availability.isAvailable": true,
       });
 
     return res.status(200).json({
       success: true,
-      message: "Ride cancelled",
+      message: "Goods(Freight) pick-up cancelled successfully",
       data: {
-        rideId: canceledRide._id,
-        status: canceledRide.status,
-        cancellationFee: canceledRide.cancellationFee,
-        // refundAmount: Math.max(0, Number(canceledRide.fare.offered) - Number(canceledRide.cancellationFee)), //how can you refund before payment done by user ?
+        rideId: canceledFreightRide._id,
+        status: canceledFreightRide.status,
+        cancellationFee: canceledFreightRide.cancellationFee
       },
     });
   } catch (error) {
-    console.error("Cancel ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to cancel ride" });
+    console.error("Cancel Freight ride error:", error);
+    res.status(500).json({ success: false, message: "Failed to cancel Freight ride" });
   }
 };
 
-// COMPLETE RIDE
+// COMPLETE RIDE FOR Freight
 
-exports.rideCompleted = async (req, res) => {
+exports.freightRideCompleted = async (req, res) => {
   try {
     const { rideId } = req.params;
     const { userId, paymentMethod } = req.body;
@@ -579,7 +463,7 @@ exports.rideCompleted = async (req, res) => {
 
     paymentMethod ? paymentMethod : "cash";
 
-    const completedRide = await Ride.findByIdAndUpdate(
+    const completedCuriorRide = await Ride.findByIdAndUpdate(
       { _id: rideId },
       {
         $set: {
@@ -592,28 +476,28 @@ exports.rideCompleted = async (req, res) => {
       { new: true }
     );
 
-    if (completedRide.driver)
-      await Driver.findByIdAndUpdate(completedRide.driver, {
+    if (completedCuriorRide.driver)
+      await Driver.findByIdAndUpdate(completedCuriorRide.driver, {
         "availability.isAvailable": true,
       });
 
     return res.status(200).json({
       success: true,
-      message: "Ride has completed successfully",
+      message: "Freight delivery completed successfully",
       data: {
-        rideId: completedRide._id,
-        status: completedRide.status,
+        rideId: completedCuriorRide._id,
+        status: completedCuriorRide.status,
       },
     });
   } catch (error) {
-    console.error("Cancel ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to cancel ride" });
+    console.error("Completed Freight ride error:", error);
+    res.status(500).json({ success: false, message: "Failed to complete the Freight ride" });
   }
 };
 
 // GIVE Rating for both user and driver
 
-exports.rating = async (req, res) => {
+exports.ratingForFreight = async (req, res) => {
   try {
     const { rideId } = req.params;
     const { userId, userRating, driverRating, userComment, driverComment } =
@@ -665,63 +549,7 @@ exports.rating = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Cancel ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to cancel ride" });
-  }
-};
-
-exports.getRideHistory = async (req, res) => {
-  try {
-    const { userId, page = 1, limit = 10, status } = req.query;
-    if (!userId)
-      return res
-        .status(400)
-        .json({ success: false, message: "UserId is required" });
-
-    const query = { user: userId };
-    if (status) query.status = status;
-    else query.status = { $in: ["completed", "cancelled"] };
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const rides = await Ride.find(query)
-      .populate("driver", "name phone vehicle rating")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-    const totalRides = await Ride.countDocuments(query);
-
-    const ridesWithDetails = rides.map((ride) => ({
-      rideId: ride._id,
-      status: ride.status,
-      driver: ride.driver,
-      pickup: ride.pickup,
-      destination: ride.destination,
-      fare: {
-        final: ride.fare.final || ride.fare.offered,
-        paymentMethod: ride.paymentMethod,
-      },
-      distance: ride.distance,
-      duration: ride.duration,
-      date: ride.createdAt,
-      completedAt: ride.completedAt,
-      cancelledAt: ride.cancelledAt,
-    }));
-
-    res.json({
-      success: true,
-      data: {
-        rides: ridesWithDetails,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalRides / parseInt(limit)),
-          totalRides,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Get ride history error:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to get ride history" });
+    console.error("Rating Freight ride error:", error);
+    res.status(500).json({ success: false, message: "Failed to rating Freight ride" });
   }
 };
