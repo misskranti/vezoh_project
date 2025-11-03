@@ -96,7 +96,7 @@ router.post("/request", auth, requestRideBodyValidator, throwError, createRide);
 // Get Active Ride
 router.get("/active", auth, activeRideQueryValidator, throwError, activeRide);
 //Confirm Ride 
-//router.patch("/rideAccespted/:rideId", auth, acceptedRideByDriver)
+router.patch("/rideAccespted/:rideId", auth, acceptedRideByDriver)
 
 //start Ride
 //router.patch("/startRide", auth, startRide);
@@ -148,7 +148,7 @@ router.get("/nearby_drivers_for_freight", auth, findDriverNearByForFreight);
 router.post("/create_freight", auth, createRideForFreight); 
 
 //Confirm Freight Ride
-router.patch("/freight_accepted/:rideId", auth, acceptedFreightRideByDriverr);
+router.patch("/freight_ride_accepted/:rideId", auth, acceptedFreightRideByDriverr);
 
 //start Freight Ride
 router.patch("/start_freight", auth, startFreight);

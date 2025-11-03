@@ -249,6 +249,12 @@ exports.createRide = async (req, res) => {
       rideNotes: rideNotes || "",
       status: "requested",
       OTPForStartRide: Math.floor(1000 + Math.random() * 9000),
+       rating: {
+      userRating: 0,
+      driverRating: 0,
+      userComment: "",
+      driverComment: "",
+    }
       // requestedAt: new Date(),
     });
     const rideCreated = await Ride.create(ride);
@@ -616,59 +622,66 @@ exports.rideCompleted = async (req, res) => {
 exports.rating = async (req, res) => {
   try {
     const { rideId } = req.params;
-    const { userId, userRating, driverRating, userComment, driverComment } =
-      req.body;
+    const { id, rating, comment } = req.body; // id can belong to user or driver
 
-    if (!rideId || !userId)
-      return res
-        .status(400)
-        .json({
-          success: true,
-          message: "Ride id and user id both are required",
-        });
+    if (!rideId || !id) {
+      return res.status(400).json({
+        success: false,
+        message: "Ride ID and ID (user/driver) are required",
+      });
+    }
 
-    const ride = await Ride.findOne({
-      _id: rideId,
-      status: "completed",
-    });
-    if (!ride)
+    const ride = await Ride.findOne({ _id: rideId, status: "completed" });
+    if (!ride) {
       return res
         .status(404)
         .json({ success: false, message: "Ride not found or not completed" });
+    }
 
-    if (ride.user.toString() !== userId)
-      return res.status(403).json({ success: false, message: "Unauthorized" });
+    let updateFields = {};
 
-    const ratingForRide = await Ride.findByIdAndUpdate(
+    // USER gives rating
+    if (ride.user.toString() === id.toString()) {
+
+      updateFields["rating.userRating"] = rating ? Number(rating) : 0;
+      updateFields["rating.userComment"] = comment ? comment : "";
+
+    }
+    // DRIVER gives rating
+    else if (ride.driver && ride.driver.toString() === id.toString()) {
+
+      updateFields["rating.driverRating"] = rating ? Number(rating) : 0;
+      updateFields["rating.driverComment"] = comment ? comment : "";
+    } 
+    else {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const updatedRide = await Ride.findByIdAndUpdate(
       rideId,
-      {
-        $set: {
-          "rating.userRating": userRating ? Number(userRating) : 0,
-          "rating.driverRating": driverRating ? Number(driverRating) : 0,
-          "rating.userComment": userComment ? userComment : "",
-          "rating.driverComment": driverComment ? driverComment : "",
-        },
-      },
-      { upsert: true }
+      { $set: updateFields },
+      { new: true }
     );
 
     return res.status(200).json({
       success: true,
-      message: "Thank you for Rating!",
+      message: "Thank you for your Rating!",
       data: {
-        rideId: ratingForRide._id,
-        status: ratingForRide.status,
-        userRating: ratingForRide.rating.userRating,
-        driverRating: ratingForRide.rating.driverRating,
-        userComment: ratingForRide.rating.userComment,
-        driverComment: ratingForRide.rating.driverComment,
-      },
+        rideId: updatedRide._id,
+        status: updatedRide.status}, 
     });
   } catch (error) {
-    console.error("Cancel ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to cancel ride" });
+    console.error("Rating error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to submit rating",
+    });
   }
 };
+
 
 exports.getRideHistory = async (req, res) => {
   try {

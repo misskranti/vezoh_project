@@ -37,6 +37,8 @@ const driverTrip = require("../controllers/driverTripController.js")
 const driverEarnings = require("../controllers/driverEarningsController.js")
 const tripVal = require("../validators/driverTripValidators.js")
 const earningVal = require("../validators/driverEarningsValidators.js")
+const {sendOTPBeforeDelivery, verifyOTPBeforeDelivery} = require("../controllers/curriorController.js");
+const{rating} = require("../controllers/rideController.js");
 
 // ==============================
 // DRIVER AUTHENTICATION ROUTES
@@ -99,6 +101,14 @@ router.post("/rides/:rideId/complete", auth, tripVal.completeTrip, throwError, d
 
 router.get("/earnings/summary", auth, earningVal.earningsSummary, throwError, driverEarnings.earningsSummary)
 router.post("/earnings/withdraw", auth, earningVal.withdraw, throwError, driverEarnings.withdraw)
+
+// OTP Verification before Delivery (for Curior and Freight Service)
+
+router.put("/send_predelivery_OTP/:rideId", auth, sendOTPBeforeDelivery);
+router.put("/verify_predelivery_OTP/:rideId", auth, verifyOTPBeforeDelivery);
+
+//Give Rating to all services after completion of ride     
+router.put("/rating/:rideId", auth, rating);
 
 module.exports = router;
 

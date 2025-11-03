@@ -10,32 +10,59 @@ const { sendEmailVerificationOTP } = require("../utils/emailService.js");
 const driver = require("../models/driver.js");
 
 // FIND NEARBY DRIVERS FOR GOODS  (["minitruck", "truck"])
+
 exports.findDriverNearByForFreight = async (req, res) => {
   try {
-    const {latitude,longitude,radius = 5000,serviceType,vehicleType,destinationLat,destinationLng} = req.query;
+    const {
+      latitude,
+      longitude,
+      radius = 5000,
+      serviceType,
+      vehicleType,
+      destinationLat,
+      destinationLng,
+    } = req.query;
 
-    if (!latitude || !longitude || !serviceType || !destinationLat ||!destinationLng) {
-      return res.status(400).json({message:"latitude, longitude, serviceType, destinationLat, and destinationLng are required"});
-    }
-
-    const userCoords = validateCoordinates(latitude, longitude)
-    const destCoords = validateCoordinates(destinationLat, destinationLng)
-
-    if (!userCoords || !destCoords) {
-      return res.status(400).json({ success: false, message: "Invalid latitude or longitude values" })
+    if (
+      !latitude ||
+      !longitude ||
+      !serviceType ||
+      !destinationLat ||
+      !destinationLng
+    ) {
+      return res
+        .status(400)
+        .json({
+          message:
+            "latitude, longitude, serviceType, destinationLat, and destinationLng are required",
+        });
     }
 
     const drivers = await Driver.find({
-      location: { $near: { $geometry: { type: "Point", coordinates: [userCoords.lng, userCoords.lat] }} },
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            // coordinates: [parseFloat(longitude), parseFloat(latitude)],
+          },
+        },
+      },
       status: "online",
       "availability.isAvailable": true,
       services: serviceType,
-       vehicleType: { $in: ["minitruck", "truck"] }, //for curior
+       vehicleType: { $in: ["minitruck", "truck"] }, //for freight
     })
       .limit(20)
       .lean();
 
-    if (!drivers.length) return res.status(404).json({success:false, message:"Drivers are not available in this range", data:[]});
+    if (!drivers.length)
+      return res
+        .status(404)
+        .json({
+          success: false,
+          message: "Drivers are not available in this range",
+          data: [],
+        });
 
     const driverIds = drivers.map((d) => d._id);
     const vehicles = await Vehicle.find({ driver: { $in: driverIds } }).lean();
@@ -44,38 +71,59 @@ exports.findDriverNearByForFreight = async (req, res) => {
       bike: { base: 20, perKm: 8, perMin: 1, surge: 1.0 },
       auto: { base: 30, perKm: 12, perMin: 1.5, surge: 1.0 },
       car: { base: 50, perKm: 15, perMin: 2, surge: 1.0 },
-      truck: { base: 80, perKm: 25, perMin: 3, surge: 1.0 },
+      minitruck: { base: 80, perKm: 20, perMin: 2.5, surge: 1.0 },
+      truck: { base: 120, perKm: 25, perMin: 3, surge: 1.0 },
     };
 
-    const driverResults = await Promise.all(drivers.map(async (driver) => {
-        const vehicle = vehicles.find((v) => v.driver.toString() === driver._id.toString());
+    const driverResults = await Promise.all(
+      drivers.map(async (driver) => {
+        const vehicle = vehicles.find(
+          (v) => v.driver.toString() === driver._id.toString()
+        );
         if (vehicleType && vehicle?.vehicle?.type !== vehicleType) return null;
 
         let etaData = null;
         try {
           etaData = await GoogleMapsService.calculateDistance(
-            {lat: driver.location.coordinates[1],lng: driver.location.coordinates[0]},
-            { lat: userCoords.lat, lng: userCoords.lng },
+            {
+              lat: driver.location.coordinates[1],
+              lng: driver.location.coordinates[0],
+            },
+            { lat: parseFloat(latitude), lng: parseFloat(longitude) },
             "driving"
           );
         } catch (err) {
-          console.warn("ETA calculation failed for driver:",driver._id,err.message);
+          console.warn(
+            "ETA calculation failed for driver:",
+            driver._id,
+            err.message
+          );
         }
 
         let fareEstimate = null;
         try {
           const distData = await GoogleMapsService.calculateDistance(
-            { lat: userCoords.lat, lng: userCoords.lng },
-            {lat: destCoords.lat, lng: destCoords.lng },
+            { lat: parseFloat(latitude), lng: parseFloat(longitude) },
+            {
+              lat: parseFloat(destinationLat),
+              lng: parseFloat(destinationLng),
+            },
             "driving"
           );
 
           const distanceKm = distData.distance.value / 1000;
           const durationMin = distData.duration.value / 60;
           const rate = fareRates[vehicleType || "auto"];
-          fareEstimate = Math.round((rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) * rate.surge);
+          fareEstimate = Math.round(
+            (rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) *
+              rate.surge
+          );
         } catch (err) {
-          console.warn("Fare calculation failed for driver:",driver._id,err.message);
+          console.warn(
+            "Fare calculation failed for driver:",
+            driver._id,
+            err.message
+          );
         }
 
         return {
@@ -84,13 +132,24 @@ exports.findDriverNearByForFreight = async (req, res) => {
           phone: driver.phone,
           profileImage: driver.profileImage,
           rating: driver.rating,
-          location: {lat: driver.location.coordinates[1],lng: driver.location.coordinates[0],address: driver.location.address},
+          location: {
+            lat: driver.location.coordinates[1],
+            lng: driver.location.coordinates[0],
+            address: driver.location.address,
+          },
           vehicle: vehicle?.vehicle || null,
-          vehicleVerification: vehicle?.verificationStatus || "pending",
+          vehicleVerification: vehicle?.verificationStatus, //|| "pending",
           estimatedFare: fareEstimate,
-        eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
+          eta: etaData
+            ? {
+                text: etaData.duration.text,
+                value: etaData.duration.value,
+                minutes: Math.ceil(etaData.duration.value / 60),
+              }
+            : null,
         };
-    }));
+      })
+    );
 
     res.json(driverResults.filter(Boolean));
   } catch (error) {
@@ -98,6 +157,7 @@ exports.findDriverNearByForFreight = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch nearby drivers" });
   }
 };
+
 
 // REQUEST FREIGHT RIDE
 
@@ -108,7 +168,7 @@ exports.createRideForFreight = async (req, res) => {
       destination,
       driverId,
       vehicleType,
-      serviceType = "curior",
+      serviceType = "freight",
       offeredFare,
       paymentMethod = "cash",
       ItemName,
@@ -242,6 +302,12 @@ exports.createRideForFreight = async (req, res) => {
         preDeliveryOTP: 0,
         preDeliveryOTPVerified: false,
       },
+          rating: {
+      userRating: 0,
+      driverRating: 0,
+      userComment: "",
+      driverComment: "",
+    }
     });
     const rideCreated = await Ride.create(ride);
     await rideCreated.populate("driver", "name phone vehicle rating");
@@ -483,7 +549,7 @@ exports.freightRideCompleted = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Freight delivery completed successfully",
+      message: "Goods(Freight) delivery completed successfully",
       data: {
         rideId: completedCuriorRide._id,
         status: completedCuriorRide.status,
@@ -500,56 +566,62 @@ exports.freightRideCompleted = async (req, res) => {
 exports.ratingForFreight = async (req, res) => {
   try {
     const { rideId } = req.params;
-    const { userId, userRating, driverRating, userComment, driverComment } =
-      req.body;
+    const { id, rating, comment } = req.body; // id can belong to user or driver
 
-    if (!rideId || !userId)
-      return res
-        .status(400)
-        .json({
-          success: true,
-          message: "Ride id and user id both are required",
-        });
+    if (!rideId || !id) {
+      return res.status(400).json({
+        success: false,
+        message: "Ride ID and ID (user/driver) are required",
+      });
+    }
 
-    const ride = await Ride.findOne({
-      _id: rideId,
-      status: "completed",
-    });
-    if (!ride)
+    const ride = await Ride.findOne({ _id: rideId, status: "completed" });
+    if (!ride) {
       return res
         .status(404)
-        .json({ success: false, message: "Ride not found or not completed" });
+        .json({ success: false, message: "Freight Ride not found or not completed" });
+    }
 
-    if (ride.user.toString() !== userId)
-      return res.status(403).json({ success: false, message: "Unauthorized" });
+    let updateFields = {};
 
-    const ratingForRide = await Ride.findByIdAndUpdate(
+    // USER gives rating
+    if (ride.user.toString() === id.toString()) {
+
+      updateFields["rating.userRating"] = rating ? Number(rating) : 0;
+      updateFields["rating.userComment"] = comment ? comment : "";
+
+    }
+    // DRIVER gives rating
+    else if (ride.driver && ride.driver.toString() === id.toString()) {
+
+      updateFields["rating.driverRating"] = rating ? Number(rating) : 0;
+      updateFields["rating.driverComment"] = comment ? comment : "";
+    } 
+    else {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const updatedRide = await Ride.findByIdAndUpdate(
       rideId,
-      {
-        $set: {
-          "rating.userRating": userRating ? Number(userRating) : 0,
-          "rating.driverRating": driverRating ? Number(driverRating) : 0,
-          "rating.userComment": userComment ? userComment : "",
-          "rating.driverComment": driverComment ? driverComment : "",
-        },
-      },
-      { upsert: true }
+      { $set: updateFields },
+      { new: true }
     );
 
     return res.status(200).json({
       success: true,
-      message: "Thank you for Rating!",
+      message: "Thank you for your Rating!",
       data: {
-        rideId: ratingForRide._id,
-        status: ratingForRide.status,
-        userRating: ratingForRide.rating.userRating,
-        driverRating: ratingForRide.rating.driverRating,
-        userComment: ratingForRide.rating.userComment,
-        driverComment: ratingForRide.rating.driverComment,
-      },
+        rideId: updatedRide._id,
+        status: updatedRide.status}, 
     });
   } catch (error) {
-    console.error("Rating Freight ride error:", error);
-    res.status(500).json({ success: false, message: "Failed to rating Freight ride" });
+    console.error("Rating error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to submit rating",
+    });
   }
 };
