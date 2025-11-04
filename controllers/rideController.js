@@ -56,6 +56,13 @@ exports.findDriverNearBy = async (req, res) => {
     };
 
     const driverResults = await Promise.all(drivers.map(async (driver) => {
+
+        if (!driver.location?.coordinates || 
+            driver.location.coordinates[0] === 0 && driver.location.coordinates[1] === 0) {
+          console.warn("Skipping driver with invalid location:", driver._id);
+          return null;
+        }
+
         const vehicle = vehicles.find((v) => v.driver.toString() === driver._id.toString());
         if (vehicleType && vehicle?.vehicle?.type !== vehicleType) return null;
 
@@ -71,6 +78,9 @@ exports.findDriverNearBy = async (req, res) => {
         }
 
         let fareEstimate = null;
+        let distanceInfo = null;
+        let durationInfo = null;
+        
         try {
           const distData = await GoogleMapsService.calculateDistance(
             { lat: userCoords.lat, lng: userCoords.lng },
@@ -82,6 +92,18 @@ exports.findDriverNearBy = async (req, res) => {
           const durationMin = distData.duration.value / 60;
           const rate = fareRates[vehicleType || "auto"];
           fareEstimate = Math.round((rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) * rate.surge);
+          
+          distanceInfo = {
+            text: distData.distance.text,
+            value: distData.distance.value,
+            km: Math.round(distanceKm * 100) / 100
+          };
+          
+          durationInfo = {
+            text: distData.duration.text,
+            value: distData.duration.value,
+            minutes: Math.ceil(durationMin)
+          };
         } catch (err) {
           console.warn("Fare calculation failed for driver:",driver._id,err.message);
         }
@@ -96,7 +118,9 @@ exports.findDriverNearBy = async (req, res) => {
           vehicle: vehicle?.vehicle || null,
           vehicleVerification: vehicle?.verificationStatus || "pending",
           estimatedFare: fareEstimate,
-        eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
+          distance: distanceInfo,
+          duration: durationInfo,
+          eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
         };
     }));
 

@@ -4,11 +4,28 @@ const Ride = require("../models/ride.js");
 
 
 //-------------------------- Dashboard Screen -----------------------------------------//
+const validateCoordinates = (lat, lng) => {
+  const latNum = Number.parseFloat(lat)
+  const lngNum = Number.parseFloat(lng)
+
+  if (isNaN(latNum) || isNaN(lngNum)) return null
+  if (latNum < -90 || latNum > 90) return null
+  if (lngNum < -180 || lngNum > 180) return null
+
+  return { lat: latNum, lng: lngNum }
+}
 
 exports.statusUpdate = async (req, res) => {
   try {
     const { action, lat, lon } = req.body;
 
+    const coords = validateCoordinates(lat, lon);
+    if (!coords) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid latitude or longitude values"
+      });
+    }
   
     let status = action === 1 ? "online" : "offline";
 
@@ -17,20 +34,36 @@ exports.statusUpdate = async (req, res) => {
       req.user._id,
       {
         $set: {
-          "location.coordinates": [Number(lon), Number(lat)],
+          "location.type": "Point",
+          "location.coordinates": [coords.lng, coords.lat],
           "location.lastUpdated": new Date(),
           status: status,
+          "availability.isAvailable": action === 1 ? true : false,
         },
       },
       { new: true }
     );
 
+    if (!updateLocation) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found"
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Status updated successfully",
-      //data: updateLocation,
+      data: {
+        status: updateLocation.status,
+        location: {
+          lat: updateLocation.location.coordinates[1],
+          lng: updateLocation.location.coordinates[0]
+        }
+      }
     });
   } catch (err) {
+    console.error("Status update error:", err);
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
