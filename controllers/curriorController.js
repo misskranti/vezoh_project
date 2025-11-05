@@ -3,10 +3,9 @@ const Driver = require("../models/driver");
 const Vehicle = require("../models/vehicle.js");
 const Ride = require("../models/ride.js");
 const GoogleMapsService = require("../utils/googleMapsService");
-const { generateOTP } = require("../utils/helpers.js");
-// const rideService = require("../utils/services.js");
+const { isValidPhone,isValidEmail } = require("../utils/helpers.js");
 const { sendMessageToSocketId } = require("../socket.js");
-const { sendEmailVerificationOTP } = require("../utils/emailService");
+const { sendPreDeliveryOTPEmail, sendDeliveryCompletedEmail } = require("../utils/emailService");
 const driver = require("../models/driver");
 
 // FIND NEARBY DRIVERS for curior  (["car", "auto","minitruck", "truck"])
@@ -175,9 +174,9 @@ exports.createRideForCurior = async (req, res) => {
       weight,
       userId,
       rideNotes,
-      Recipient,
-      phone,
-      email,
+      recipientName,
+      recipientPhone,
+      recipientEmail,
     } = req.body;
     if (
       !pickup ||
@@ -187,7 +186,7 @@ exports.createRideForCurior = async (req, res) => {
       !userId ||
       !ItemName ||
       !description ||
-      !Recipient
+      !recipientName
     )
       return res.status(400).json({
         success: false,
@@ -195,6 +194,25 @@ exports.createRideForCurior = async (req, res) => {
           "Pickup, destination, driver, vehicle type, ItemName, description, Recipient and userId are required",
       });
 
+      if (!recipientPhone && !recipientEmail) {
+  return res.status(400).json({
+    success: false,
+    message: "At least one contact detail (phone or email) for the recipient is required",
+  });
+}
+
+      if(recipientPhone && !isValidPhone(recipientPhone)){
+        return res.status(400).json({
+          success: false,
+          message: "Invalid recipient phone number format",
+        });
+      }
+       if(recipientEmail && !isValidEmail(recipientEmail)){
+        return res.status(400).json({
+          success: false,
+          message: "Invalid recipient email format",
+        });
+      }
         const kg = parseFloat(kilogram || 0);
     const gramInKg = parseFloat(gram || 0) / 1000; // 1000 grams = 1 kg
 
@@ -291,9 +309,9 @@ exports.createRideForCurior = async (req, res) => {
           gram: gramInKg,
         },
         deliverTo: {
-        name: Recipient,
-        phone: phone,
-        email: email,
+        name: recipientName,
+        phone: recipientPhone,
+        email: recipientEmail,
       },
       preDeliveryOTP: 0,
       preDeliveryOTPVerified: false,
@@ -359,6 +377,7 @@ exports.acceptedCuriorRideByDriverr = async (req, res) => {
 
     if (!rideConfirmed)
       return res.status(404).json({ status: false, message: "Ride not found" });
+
     if (socketId) {
       sendMessageToSocketId(socketId, {
         event: "ride-confirmed",
@@ -657,19 +676,23 @@ exports.sendOTPBeforeDelivery = async (req, res) => {
       });       
    }
     const otp = Math.floor(1000 + Math.random() * 9000);
+//send pre-delivery OTP email to user
+      let userName = ride.user.name;
+      await sendPreDeliveryOTPEmail(ride.user.email, otp, userName, ride.serviceType, ride._id);
 
-      let targetName = ride.user.name;
-      await sendEmailVerificationOTP(ride.user.email, otp, targetName);
+      // send pre-delivery OTP email to recipient
+      let recipientName = ride.serviceDetails.deliverTo.name;
+       await sendPreDeliveryOTPEmail(ride.serviceDetails.deliverTo.email, otp, recipientName, ride.serviceType, ride._id);
     
 
     ride.serviceDetails.preDeliveryOTP = otp;
     await ride.save();
 
-    console.log(`[DEBUG] OTP ${otp} sent successfully to ${targetName}`);
+    console.log(`[DEBUG] OTP ${otp} sent successfully to ${targetName} and ${recipientName}`);
 
     return res.status(200).json({
       success: true,
-      message: `OTP sent to ${targetName} successfully!`,
+      message: `OTP sent to ${recipientName} successfully!`,
     });
   } catch (err) {
     console.error(`[ERROR] sendOTPBeforeDelivery:`, err);
@@ -698,7 +721,7 @@ exports.verifyOTPBeforeDelivery = async (req, res) => {
       rideId,
       driver: driverId,
       status: "started",
-    });
+    }).populate("user", "_id name email phone");;
     if (!getRide)
       return res
         .status(404)
@@ -715,7 +738,15 @@ exports.verifyOTPBeforeDelivery = async (req, res) => {
         .json({ success: false, message: "Invalid OTP provided." });
     }
     getRide.serviceDetails.preDeliveryOTPVerified = true;
-    await getRide.save();   
+    await getRide.save();  
+// Send delivery completed email to user 
+     let userName = getRide.user.name;
+      await sendDeliveryCompletedEmail(getRide.user.email, userName, getRide.serviceType, getRide._id);
+// Send delivery completed email to recipient
+      let recipientName = getRide.serviceDetails.deliverTo.name;
+       await sendDeliveryCompletedEmail(getRide.serviceDetails.deliverTo.email, recipientName, getRide.serviceType, getRide._id);
+    
+
 
     return res
       .status(200)

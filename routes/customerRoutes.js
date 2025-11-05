@@ -84,7 +84,7 @@ router.get("/geocode", auth, geoDecode);
 router.post("/estimate-fare", auth, estimateFare);
 
 // Find Nearby Drivers
-router.get("/nearby-drivers", auth, nearbyDriversQueryValidator, throwError, findDriverNearBy);
+router.get("/nearby-drivers",  nearbyDriversQueryValidator, throwError, findDriverNearBy);
 
 // ==============================
 // RIDE MANAGEMENT ROUTES
