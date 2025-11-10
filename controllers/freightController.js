@@ -43,14 +43,14 @@ exports.findDriverNearByForFreight = async (req, res) => {
         $near: {
           $geometry: {
             type: "Point",
-            // coordinates: [parseFloat(longitude), parseFloat(latitude)],
+            coordinates: [parseFloat(longitude), parseFloat(latitude)],
           },
         },
       },
       status: "online",
       "availability.isAvailable": true,
       services: serviceType,
-       vehicleType: { $in: ["minitruck", "truck"] }, //for freight
+      vehicleType: { $in: ["auto","minitruck", "truck"] },  //for freight
     })
       .limit(20)
       .lean();
@@ -67,19 +67,23 @@ exports.findDriverNearByForFreight = async (req, res) => {
     const driverIds = drivers.map((d) => d._id);
     const vehicles = await Vehicle.find({ driver: { $in: driverIds } }).lean();
 
-    const fareRates = {
+     const fareRates = {
       bike: { base: 20, perKm: 8, perMin: 1, surge: 1.0 },
-      auto: { base: 30, perKm: 12, perMin: 1.5, surge: 1.0 },
-      car: { base: 50, perKm: 15, perMin: 2, surge: 1.0 },
-      minitruck: { base: 80, perKm: 20, perMin: 2.5, surge: 1.0 },
-      truck: { base: 120, perKm: 25, perMin: 3, surge: 1.0 },
+      auto: { base: 30, perKm: 14, perMin: 1.5, surge: 1.0 },
+      car: { base: 50, perKm: 20, perMin: 2, surge: 1.0 },
+      minitruck: { base: 80, perKm: 30, perMin: 2.5, surge: 1.0 },
+      truck: { base: 120, perKm: 35, perMin: 3, surge: 1.0 },
     };
 
-    const driverResults = await Promise.all(
-      drivers.map(async (driver) => {
-        const vehicle = vehicles.find(
-          (v) => v.driver.toString() === driver._id.toString()
-        );
+    const driverResults = await Promise.all(drivers.map(async (driver) => {
+
+        if (!driver.location?.coordinates || 
+            driver.location.coordinates[0] === 0 && driver.location.coordinates[1] === 0) {
+          console.warn("Skipping driver with invalid location:", driver._id);
+          return null;
+        }
+
+        const vehicle = vehicles.find((v) => v.driver.toString() === driver._id.toString());
         if (vehicleType && vehicle?.vehicle?.type !== vehicleType) return null;
 
         let etaData = null;
@@ -101,6 +105,9 @@ exports.findDriverNearByForFreight = async (req, res) => {
         }
 
         let fareEstimate = null;
+        let distanceInfo = null;
+        let durationInfo = null;
+        
         try {
           const distData = await GoogleMapsService.calculateDistance(
             { lat: parseFloat(latitude), lng: parseFloat(longitude) },
@@ -114,10 +121,19 @@ exports.findDriverNearByForFreight = async (req, res) => {
           const distanceKm = distData.distance.value / 1000;
           const durationMin = distData.duration.value / 60;
           const rate = fareRates[vehicleType || "auto"];
-          fareEstimate = Math.round(
-            (rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) *
-              rate.surge
-          );
+          fareEstimate = Math.round((rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) * rate.surge);
+          
+          distanceInfo = {
+            text: distData.distance.text,
+            value: distData.distance.value,
+            km: Math.round(distanceKm * 100) / 100
+          };
+          
+          durationInfo = {
+            text: distData.duration.text,
+            value: distData.duration.value,
+            minutes: Math.ceil(durationMin)
+          };
         } catch (err) {
           console.warn(
             "Fare calculation failed for driver:",
@@ -140,13 +156,9 @@ exports.findDriverNearByForFreight = async (req, res) => {
           vehicle: vehicle?.vehicle || null,
           vehicleVerification: vehicle?.verificationStatus, //|| "pending",
           estimatedFare: fareEstimate,
-          eta: etaData
-            ? {
-                text: etaData.duration.text,
-                value: etaData.duration.value,
-                minutes: Math.ceil(etaData.duration.value / 60),
-              }
-            : null,
+          distance: distanceInfo,
+          duration: durationInfo,
+          eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
         };
       })
     );
@@ -157,7 +169,6 @@ exports.findDriverNearByForFreight = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch nearby drivers" });
   }
 };
-
 
 // REQUEST FREIGHT RIDE
 
@@ -207,8 +218,8 @@ exports.createRideForFreight = async (req, res) => {
 
     const totalWeightKg = quintalInKg + kg + gramInKg;
 
-    //  Range check (between 1 and 2 quintals)
-    if (totalWeightKg < 100 || totalWeightKg > 200) {
+    //  Range check (between 1 and 4 quintals)
+    if (totalWeightKg < 100 || totalWeightKg > 400) {
       return res.status(400).json({
         success: false,
         message: "Weight should be between 1 and 2 quintals (100kg to 200kg)",
@@ -234,17 +245,19 @@ exports.createRideForFreight = async (req, res) => {
       distance = distanceData.distance.value / 1000;
       duration = distanceData.duration.value / 60;
 
-      const fareRates = {
-        minitruck: { base: 80, perKm: 20 },
-        truck: { base: 120, perKm: 25}
+   const fareRates = {
+        auto: { base: 30, perKm: 14 },
+        minitruck: { base: 80, perKm: 30 },
+        truck: { base: 120, perKm: 35}
       };
+
       const rate = fareRates[vehicleType] || fareRates.truck;
       estimatedFare = Math.round(rate.base + distance * rate.perKm);
     } catch (error) {
       distance = 5;
       duration = 15;
       estimatedFare =
-        vehicleType === "minitruck" ? 1700 : vehicleType === "truck" ? 3125 : 3500;
+        vehicleType === "auto" ? 490 : vehicleType === "minitruck" ? 2550 : 4375;
     }
 
     const ride = new Ride({

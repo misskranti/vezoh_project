@@ -108,7 +108,7 @@ router.put("/cancel/:rideId", auth, cancelRideValidator, throwError, cancelRide)
 router.put("/rideCompleted/:rideId", auth, completeRideValidator, throwError, rideCompleted);
 
 // Rate Ride
-router.put("/rating/:rideId", auth, completeRideValidator, throwError, rating);
+router.put("/rating/:rideId", auth, rating);
 
 
 // ==============================

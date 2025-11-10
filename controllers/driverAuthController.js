@@ -55,7 +55,7 @@ exports.registerDriver = async (req, res) => {
 
     await driver.save();
 
-    await sendEmailVerificationOTP(driver.email, otp, driver.name);
+    // await sendEmailVerificationOTP(driver.email, otp, driver.name);
 
     return res.status(201).json({
       success: true,
@@ -105,7 +105,7 @@ exports.loginDriver = async (req, res) => {
       otp = driver.loginVerificationCode;
       console.log(`[LOGIN] Reusing OTP for ${driver.email}: ${otp}`);
     }
-    await sendEmailVerificationOTP(driver.email, otp, driver.name);
+    // await sendEmailVerificationOTP(driver.email, otp, driver.name);
 
     res.json({ success: true, message: "Login OTP sent to your email" });
   } catch (err) {
@@ -238,7 +238,7 @@ exports.resendDriverEmailOtp = async (req, res) => {
       driver.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
       await driver.save();
 
-      await sendEmailVerificationOTP(driver.email, otp, driver.name);
+      // await sendEmailVerificationOTP(driver.email, otp, driver.name);
 
       return res.json({
         success: true,
@@ -260,7 +260,7 @@ exports.resendDriverEmailOtp = async (req, res) => {
       driver.loginOtpVerified = false;
       await driver.save();
 
-      await sendEmailVerificationOTP(driver.email, otp, driver.name);
+      // await sendEmailVerificationOTP(driver.email, otp, driver.name);
 
       return res.json({
         success: true,
@@ -277,3 +277,4 @@ exports.resendDriverEmailOtp = async (req, res) => {
     });
   }
 };
+

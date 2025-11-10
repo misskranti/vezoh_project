@@ -45,14 +45,14 @@ const{rating} = require("../controllers/rideController.js");
 // ==============================
 
 // Driver Registration
-router.post("/register", driverRegisterValidator, throwError, driverAuthController.registerDriver);
+router.post("/register", driverAuthController.registerDriver);
 
 // Driver Login
-router.post("/login", driverLoginValidator, throwError, driverAuthController.loginDriver);
+router.post("/login", driverAuthController.loginDriver);
 
 // Email Verification
-router.post("/verify-email-otp", driverVerifyOtpValidator, throwError, driverAuthController.verifyDriverEmailOtp);
-router.post("/resend-email-otp", driverResendOtpValidator, throwError, driverAuthController.resendDriverEmailOtp);
+router.post("/verify-email-otp", driverAuthController.verifyDriverEmailOtp);
+router.post("/resend-email-otp", driverAuthController.resendDriverEmailOtp);
 
 // Driver Profile & Logout
 router.get("/profile", auth, profileController.getProfile);

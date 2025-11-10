@@ -95,7 +95,7 @@ const sendPreDeliveryOTPEmail = async (email, otp, userName = "User", type = "Pa
       <p>Hello ${userName},</p>
       <p>Your ${type.toLowerCase()} ${
         referenceId ? `(<strong>${referenceId}</strong>)` : ""
-      } is out for delivery. Please share the OTP below with the delivery agent to verify your delivery:</p>
+      } is reached for delivery. Please share the OTP below with the delivery agent to verify your delivery:</p>
       <div style="background-color: #fef9c3; padding: 20px; text-align: center; margin: 20px 0;">
         <h1 style="color: #eab308; font-size: 32px; margin: 0;">${otp}</h1>
       </div>

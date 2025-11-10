@@ -51,7 +51,7 @@ exports.findDriverNearBy = async (req, res) => {
     })
       .limit(20)
       .lean();
-
+// console.log("===>",drivers)
     if (!drivers.length)
       return res
         .status(404)
@@ -63,18 +63,22 @@ exports.findDriverNearBy = async (req, res) => {
 
     const driverIds = drivers.map((d) => d._id);
     const vehicles = await Vehicle.find({ driver: { $in: driverIds } }).lean();
-
+console.log("driverIds===>",driverIds)
     const fareRates = {
       bike: { base: 20, perKm: 8, perMin: 1, surge: 1.0 },
-      auto: { base: 30, perKm: 12, perMin: 1.5, surge: 1.0 },
-      car: { base: 50, perKm: 15, perMin: 2, surge: 1.0 },
+      auto: { base: 30, perKm: 19, perMin: 1.5, surge: 1.0 },
+      car: { base: 50, perKm: 25, perMin: 2, surge: 1.0 },
     };
 
-    const driverResults = await Promise.all(
-      drivers.map(async (driver) => {
-        const vehicle = vehicles.find(
-          (v) => v.driver.toString() === driver._id.toString()
-        );
+    const driverResults = await Promise.all(drivers.map(async (driver) => {
+
+        if (!driver.location?.coordinates || 
+            driver.location.coordinates[0] === 0 && driver.location.coordinates[1] === 0) {
+          console.warn("Skipping driver with invalid location:", driver._id);
+          return null;
+        }
+
+        const vehicle = vehicles.find((v) => v.driver.toString() === driver._id.toString());
         if (vehicleType && vehicle?.vehicle?.type !== vehicleType) return null;
 
         let etaData = null;
@@ -96,6 +100,9 @@ exports.findDriverNearBy = async (req, res) => {
         }
 
         let fareEstimate = null;
+        let distanceInfo = null;
+        let durationInfo = null;
+        
         try {
           const distData = await GoogleMapsService.calculateDistance(
             { lat: parseFloat(latitude), lng: parseFloat(longitude) },
@@ -109,10 +116,19 @@ exports.findDriverNearBy = async (req, res) => {
           const distanceKm = distData.distance.value / 1000;
           const durationMin = distData.duration.value / 60;
           const rate = fareRates[vehicleType || "auto"];
-          fareEstimate = Math.round(
-            (rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) *
-              rate.surge
-          );
+          fareEstimate = Math.round((rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) * rate.surge);
+          
+          distanceInfo = {
+            text: distData.distance.text,
+            value: distData.distance.value,
+            km: Math.round(distanceKm * 100) / 100
+          };
+          
+          durationInfo = {
+            text: distData.duration.text,
+            value: distData.duration.value,
+            minutes: Math.ceil(durationMin)
+          };
         } catch (err) {
           console.warn(
             "Fare calculation failed for driver:",
@@ -135,13 +151,9 @@ exports.findDriverNearBy = async (req, res) => {
           vehicle: vehicle?.vehicle || null,
           vehicleVerification: vehicle?.verificationStatus, //|| "pending",
           estimatedFare: fareEstimate,
-          eta: etaData
-            ? {
-                text: etaData.duration.text,
-                value: etaData.duration.value,
-                minutes: Math.ceil(etaData.duration.value / 60),
-              }
-            : null,
+          distance: distanceInfo,
+          duration: durationInfo,
+          eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
         };
       })
     );
@@ -199,8 +211,8 @@ exports.createRide = async (req, res) => {
 
       const fareRates = {
         bike: { base: 20, perKm: 8 },
-        auto: { base: 30, perKm: 12 },
-        car: { base: 50, perKm: 15 },
+        auto: { base: 30, perKm: 19 },
+        car: { base: 50, perKm: 25 },
       };
       const rate = fareRates[vehicleType] || fareRates.auto;
       estimatedFare = Math.round(rate.base + distance * rate.perKm);
@@ -208,7 +220,7 @@ exports.createRide = async (req, res) => {
       distance = 5;
       duration = 15;
       estimatedFare =
-        vehicleType === "bike" ? 60 : vehicleType === "auto" ? 80 : 120;
+        vehicleType === "bike" ? 200 : vehicleType === "auto" ? 665 : 1375;
     }
 
     const ride = new Ride({

@@ -7,8 +7,9 @@ const { isValidPhone,isValidEmail } = require("../utils/helpers.js");
 const { sendMessageToSocketId } = require("../socket.js");
 const { sendPreDeliveryOTPEmail, sendDeliveryCompletedEmail } = require("../utils/emailService");
 const driver = require("../models/driver");
-
+const rideService = require("../utils/services.js");
 // FIND NEARBY DRIVERS for curior  (["car", "auto","minitruck", "truck"])
+
 exports.findDriverNearByForCurior = async (req, res) => {
   try {
     const {
@@ -41,14 +42,14 @@ exports.findDriverNearByForCurior = async (req, res) => {
         $near: {
           $geometry: {
             type: "Point",
-            // coordinates: [parseFloat(longitude), parseFloat(latitude)],
+            coordinates: [parseFloat(longitude), parseFloat(latitude)],
           },
         },
       },
       status: "online",
       "availability.isAvailable": true,
       services: serviceType,
-       vehicleType: { $in: ["car", "auto","minitruck", "truck"] }, //for curior
+      vehicleType: { $in: ["car", "auto","minitruck", "truck"] }, //for curior
     })
       .limit(20)
       .lean();
@@ -65,19 +66,23 @@ exports.findDriverNearByForCurior = async (req, res) => {
     const driverIds = drivers.map((d) => d._id);
     const vehicles = await Vehicle.find({ driver: { $in: driverIds } }).lean();
 
-    const fareRates = {
+     const fareRates = {
       bike: { base: 20, perKm: 8, perMin: 1, surge: 1.0 },
-      auto: { base: 30, perKm: 12, perMin: 1.5, surge: 1.0 },
-      car: { base: 50, perKm: 15, perMin: 2, surge: 1.0 },
-      minitruck: { base: 80, perKm: 20, perMin: 2.5, surge: 1.0 },
-      truck: { base: 120, perKm: 25, perMin: 3, surge: 1.0 },
+      auto: { base: 30, perKm: 14, perMin: 1.5, surge: 1.0 },
+      car: { base: 50, perKm: 20, perMin: 2, surge: 1.0 },
+      minitruck: { base: 80, perKm: 30, perMin: 2.5, surge: 1.0 },
+      truck: { base: 120, perKm: 35, perMin: 3, surge: 1.0 },
     };
 
-    const driverResults = await Promise.all(
-      drivers.map(async (driver) => {
-        const vehicle = vehicles.find(
-          (v) => v.driver.toString() === driver._id.toString()
-        );
+    const driverResults = await Promise.all(drivers.map(async (driver) => {
+
+        if (!driver.location?.coordinates || 
+            driver.location.coordinates[0] === 0 && driver.location.coordinates[1] === 0) {
+          console.warn("Skipping driver with invalid location:", driver._id);
+          return null;
+        }
+
+        const vehicle = vehicles.find((v) => v.driver.toString() === driver._id.toString());
         if (vehicleType && vehicle?.vehicle?.type !== vehicleType) return null;
 
         let etaData = null;
@@ -99,6 +104,9 @@ exports.findDriverNearByForCurior = async (req, res) => {
         }
 
         let fareEstimate = null;
+        let distanceInfo = null;
+        let durationInfo = null;
+        
         try {
           const distData = await GoogleMapsService.calculateDistance(
             { lat: parseFloat(latitude), lng: parseFloat(longitude) },
@@ -112,10 +120,19 @@ exports.findDriverNearByForCurior = async (req, res) => {
           const distanceKm = distData.distance.value / 1000;
           const durationMin = distData.duration.value / 60;
           const rate = fareRates[vehicleType || "auto"];
-          fareEstimate = Math.round(
-            (rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) *
-              rate.surge
-          );
+          fareEstimate = Math.round((rate.base + distanceKm * rate.perKm + durationMin * rate.perMin) * rate.surge);
+          
+          distanceInfo = {
+            text: distData.distance.text,
+            value: distData.distance.value,
+            km: Math.round(distanceKm * 100) / 100
+          };
+          
+          durationInfo = {
+            text: distData.duration.text,
+            value: distData.duration.value,
+            minutes: Math.ceil(durationMin)
+          };
         } catch (err) {
           console.warn(
             "Fare calculation failed for driver:",
@@ -138,13 +155,9 @@ exports.findDriverNearByForCurior = async (req, res) => {
           vehicle: vehicle?.vehicle || null,
           vehicleVerification: vehicle?.verificationStatus, //|| "pending",
           estimatedFare: fareEstimate,
-          eta: etaData
-            ? {
-                text: etaData.duration.text,
-                value: etaData.duration.value,
-                minutes: Math.ceil(etaData.duration.value / 60),
-              }
-            : null,
+          distance: distanceInfo,
+          duration: durationInfo,
+          eta: etaData ? { text: etaData.duration.text, value: etaData.duration.value, minutes: Math.ceil(etaData.duration.value / 60) } : null,
         };
       })
     );
@@ -186,12 +199,13 @@ exports.createRideForCurior = async (req, res) => {
       !userId ||
       !ItemName ||
       !description ||
-      !recipientName
+      !recipientName ||
+      !weight
     )
       return res.status(400).json({
         success: false,
         message:
-          "Pickup, destination, driver, vehicle type, ItemName, description, Recipient and userId are required",
+          "Pickup, destination, driver, vehicle type, ItemName, description, Recipient, weight of the item and userId are required",
       });
 
       if (!recipientPhone && !recipientEmail) {
@@ -213,16 +227,16 @@ exports.createRideForCurior = async (req, res) => {
           message: "Invalid recipient email format",
         });
       }
-        const kg = parseFloat(kilogram || 0);
-    const gramInKg = parseFloat(gram || 0) / 1000; // 1000 grams = 1 kg
+        const kg = parseFloat(weight.kilogram || 0);
+    const gramInKg = parseFloat(weight.gram || 0) / 1000; // 1000 grams = 1 kg
 
     const totalWeightKg = kg + gramInKg;
 
     //  Range check (between 1 and 100 KG)
-    if (totalWeightKg < 1 || totalWeightKg > 100) {
+    if (totalWeightKg < 50 || totalWeightKg > 100) {
       return res.status(400).json({
         success: false,
-        message: "Weight should be between 1 and 100 kilograms",
+        message: "Weight should be between 50 and 100 kilograms",
       });
     }
 
@@ -247,18 +261,19 @@ exports.createRideForCurior = async (req, res) => {
       duration = distanceData.duration.value / 60;
 
       const fareRates = {
-        auto: { base: 30, perKm: 12 },
-        car: { base: 50, perKm: 15 },
-        minitruck: { base: 80, perKm: 20 },
-        truck: { base: 120, perKm: 25}
+        auto: { base: 30, perKm: 14 },
+        car: { base: 50, perKm: 20 },
+        minitruck: { base: 80, perKm: 30 },
+        truck: { base: 120, perKm: 35}
       };
+
       const rate = fareRates[vehicleType] || fareRates.auto;
       estimatedFare = Math.round(rate.base + distance * rate.perKm);
     } catch (error) {
       distance = 5;
       duration = 15;
       estimatedFare =
-        vehicleType === "auto" ? 420 : vehicleType === "car" ? 825 : 1700;
+        vehicleType === "auto" ? 490 : vehicleType === "car" ? 1100 : 1700;
     }
 
     const ride = new Ride({
@@ -304,7 +319,7 @@ exports.createRideForCurior = async (req, res) => {
         name: ItemName,
         description: description,
          weight: {
-          quintal: quintalInKg ? parseFloat(quintalInKg) : 0,
+          quintal: weight.quintal ? parseFloat(weight.quintal) : 0,
           kilogram: kg,
           gram: gramInKg,
         },
@@ -315,6 +330,7 @@ exports.createRideForCurior = async (req, res) => {
       },
       preDeliveryOTP: 0,
       preDeliveryOTPVerified: false,
+      preDeliveryOTPExpire: null
 
       },
           rating: {
@@ -402,6 +418,7 @@ exports.acceptedCuriorRideByDriverr = async (req, res) => {
 exports.startCurior = async (req, res) => {
   try {
     const { rideId, otp, driverId, socketId } = req.body;
+    console.log(rideId, otp, driverId, "====in start curior controller folder");
     const ride = await rideService.startRide({ rideId, otp, driverId });
 
     console.log(ride);
@@ -609,6 +626,7 @@ exports.ratingForCurior = async (req, res) => {
     }
     // DRIVER gives rating
     else if (ride.driver && ride.driver.toString() === id.toString()) {
+      console.log("this is for driver rating",ride.driver);
 
       updateFields["rating.driverRating"] = rating ? Number(rating) : 0;
       updateFields["rating.driverComment"] = comment ? comment : "";
@@ -676,19 +694,23 @@ exports.sendOTPBeforeDelivery = async (req, res) => {
       });       
    }
     const otp = Math.floor(1000 + Math.random() * 9000);
+
+     // Store OTP with expiry time (10 min)
+    const expireAt = Date.now() + 10 * 60 * 1000; // 10 minutes from now
 //send pre-delivery OTP email to user
       let userName = ride.user.name;
-      await sendPreDeliveryOTPEmail(ride.user.email, otp, userName, ride.serviceType, ride._id);
+      await sendPreDeliveryOTPEmail(ride.user.email, otp, userName, ride.serviceDetails.name, ride._id);
 
       // send pre-delivery OTP email to recipient
       let recipientName = ride.serviceDetails.deliverTo.name;
-       await sendPreDeliveryOTPEmail(ride.serviceDetails.deliverTo.email, otp, recipientName, ride.serviceType, ride._id);
+       await sendPreDeliveryOTPEmail(ride.serviceDetails.deliverTo.email, otp, recipientName, ride.serviceDetails.name, ride._id);
     
 
     ride.serviceDetails.preDeliveryOTP = otp;
+    ride.serviceDetails.preDeliveryOTPExpire = expireAt;
     await ride.save();
 
-    console.log(`[DEBUG] OTP ${otp} sent successfully to ${targetName} and ${recipientName}`);
+    console.log(`[DEBUG] OTP ${otp} sent successfully to ${userName} and ${recipientName}`);
 
     return res.status(200).json({
       success: true,
@@ -709,6 +731,7 @@ exports.verifyOTPBeforeDelivery = async (req, res) => {
   try {
     const { rideId } = req.params;
     const { otp, driverId } = req.body;
+   
     if (!rideId || !driverId || !otp)
       return res
         .status(400)
@@ -718,33 +741,46 @@ exports.verifyOTPBeforeDelivery = async (req, res) => {
         });
 
     const getRide = await Ride.findOne({
-      rideId,
+      _id:rideId,
       driver: driverId,
       status: "started",
-    }).populate("user", "_id name email phone");;
+    }).populate("user", "_id name email phone");
+
     if (!getRide)
       return res
         .status(404)
         .json({ success: false, message: "Ride not found or not started." });
+
  if(getRide.serviceDetails.preDeliveryOTPVerified){     
   return res.status(400).json({
         success: false,
         message: "OTP already verified .",
       });       
    }
+
+  if(getRide.serviceDetails.preDeliveryOTPExpire < new Date()){
+      return res
+        .status(400)
+        .json({ success: false, message: "OTP has expired. Please request a new one." });
+    } 
+
     if (getRide.serviceDetails.preDeliveryOTP !== parseInt(otp)) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid OTP provided." });
     }
+
+
     getRide.serviceDetails.preDeliveryOTPVerified = true;
     await getRide.save();  
+    
 // Send delivery completed email to user 
      let userName = getRide.user.name;
-      await sendDeliveryCompletedEmail(getRide.user.email, userName, getRide.serviceType, getRide._id);
+      await sendDeliveryCompletedEmail(getRide.user.email, userName, getRide.serviceDetails.name, getRide._id);
+
 // Send delivery completed email to recipient
       let recipientName = getRide.serviceDetails.deliverTo.name;
-       await sendDeliveryCompletedEmail(getRide.serviceDetails.deliverTo.email, recipientName, getRide.serviceType, getRide._id);
+       await sendDeliveryCompletedEmail(getRide.serviceDetails.deliverTo.email, recipientName, getRide.serviceDetails.name, getRide._id);
     
 
 

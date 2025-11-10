@@ -134,6 +134,9 @@ const rideSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    preDeliveryOTPExpire:{
+      type: Date,
+    },
     },
   },
   {
