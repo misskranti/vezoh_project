@@ -1,12 +1,81 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
 const Driver = require("../models/driver");
-const {generateOTP,formatPhoneNumber,isValidEmail,isValidPhone} = require("../utils/helpers");
+const {generateOTP,formatPhoneNumber,isValidEmail,isValidPhone,generateUniquePhone} = require("../utils/helpers");
 const { sendEmailVerificationOTP } = require("../utils/emailService");
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
+
+
+exports.sendDriverEmailOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Case 4: Empty email
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    // Check if user exists
+    let driver = await Driver.findOne({ email: email.toLowerCase() });
+
+    // Case 3: User exists AND verified → Block registration
+    if (driver && driver.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists. Please sign in.",
+      });
+    }
+
+    // Case 2: User exists but NOT verified → Resend OTP
+    if (driver && !driver.isVerified) {
+      const otp = generateOTP().toString();
+      driver.verificationCode = otp;
+      driver.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      await driver.save();
+
+      await sendEmailVerificationOTP(driver.email, otp, driver.name || "User");
+
+      return res.status(200).json({
+        success: true,
+        message: "New OTP sent successfully to your email.",
+      });
+    }
+
+    // Case 1: New driver → Create and send OTP
+    const otp = generateOTP().toString();
+    const newUser = new Driver({
+      name: "dummy",
+      email: email.toLowerCase(),
+      phone: generateUniquePhone(),
+      isVerified: false,
+      verificationCode: otp,
+      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
+    });
+
+    await newUser.save(); 
+
+    await sendEmailVerificationOTP(newUser.email, otp, newUser.name || "Driver");
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent successfully to your email.", 
+    });
+
+  } catch (err) {
+    console.error("sendUserEmailOtp error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong. Please try again later.",
+    });
+  }
+};
+
 
 // ---------------------- REGISTER DRIVER ----------------------
 
@@ -197,7 +266,7 @@ exports.verifyDriverEmailOtp = async (req, res) => {
       return res.json({
         success: true,
         message: "Driver login verified successfully",
-        data: { id: driver._id.toString(), token },
+        data: { id: driver._id.toString()},
       });
     }
   } catch (err) {

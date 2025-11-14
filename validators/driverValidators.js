@@ -1,4 +1,16 @@
 const { body, param } = require("express-validator")
+const sendOtpValidator = [
+  body("email")
+    .exists({ checkFalsy: true })
+    .withMessage("Email is required")
+    .bail()
+    .notEmpty()
+    .withMessage("Email is required")
+    .trim()
+    .isEmail()
+    .withMessage("Please enter a valid email address")
+    .normalizeEmail(),
+]
 
 // Auth
 const driverRegisterValidator = [
@@ -94,6 +106,7 @@ const serviceParamValidator = [
 ]
 
 module.exports = {
+  sendOtpValidator,
   driverRegisterValidator,
   driverLoginValidator,
   driverVerifyOtpValidator,

@@ -8,6 +8,7 @@ const { throwError } = require("../middleware/errorMiddleware.js");
 
 // Validators
 const {
+  sendOtpValidator,
   driverRegisterValidator,
   driverLoginValidator,
   driverVerifyOtpValidator,
@@ -43,6 +44,8 @@ const{rating} = require("../controllers/rideController.js");
 // ==============================
 // DRIVER AUTHENTICATION ROUTES
 // ==============================
+
+router.post("/send-otp", sendOtpValidator, throwError, driverAuthController.sendDriverEmailOtp);
 
 // Driver Registration
 router.post("/register", driverAuthController.registerDriver);
