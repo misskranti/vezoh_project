@@ -40,6 +40,7 @@ const {
 const {findDriverNearByForCurior, createRideForCurior, acceptedCuriorRideByDriverr, startCurior, cancelCurior, curiorRideCompleted, ratingForCurior} = require("../controllers/curriorController.js");
 
 const {findDriverNearByForFreight, createRideForFreight, acceptedFreightRideByDriverr, startFreight, cancelFreight, freightRideCompleted, ratingForFreight} = require("../controllers/freightController.js");
+const { sendPushNotifications } = require("../controllers/pushNotificationController.js");
 
 // ==============================
 // AUTHENTICATION ROUTES
@@ -162,6 +163,7 @@ router.put("/freight_completed/:rideId", auth, freightRideCompleted);
 // Rate Freight Ride     
 router.put("/freight_rating/:rideId", auth, ratingForFreight);
 
-
+//push notification
+router.post("/push_notification", sendPushNotifications); 
 
 module.exports = router;

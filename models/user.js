@@ -30,6 +30,10 @@ const userSchema = new mongoose.Schema(
      type:String,
      default:""
     },
+    fcmToken:{
+     type:String,
+     default:""
+    },
 
     // Registration OTP
     verificationCode: { type: String, default: null },

@@ -183,7 +183,7 @@ exports.loginUser = async (req, res) => {
 
 exports.verifyUserEmailOtp = async (req, res) => {
   try {
-    const { email, otp, type } = req.body;
+    const { email, otp, type,fcmToken } = req.body;
 
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
@@ -256,6 +256,7 @@ exports.verifyUserEmailOtp = async (req, res) => {
       user.loginVerificationCode = null;
       user.loginOtpExpiry = null;
       user.userToken = token;
+      user.fcmToken = fcmToken || "";
       await user.save();
 
       return res.json({
