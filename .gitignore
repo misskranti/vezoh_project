@@ -7,3 +7,6 @@
 
 uploads/
 uploads/*
+
+#firebase service account
+serviceAccountKey.json
