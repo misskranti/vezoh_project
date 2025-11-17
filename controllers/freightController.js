@@ -1,13 +1,13 @@
 const { validationResult } = require("express-validator");
-const Driver = require("../models/driver.js");
+const Driver = require("../models/driver");
 const Vehicle = require("../models/vehicle.js");
 const Ride = require("../models/ride.js");
-const GoogleMapsService = require("../utils/googleMapsService.js");
-const { generateOTP } = require("../utils/helpers.js");
-// const rideService = require("../utils/services.js");
+const GoogleMapsService = require("../utils/googleMapsService");
+const { isValidPhone,isValidEmail } = require("../utils/helpers.js");
 const { sendMessageToSocketId } = require("../socket.js");
-const { sendEmailVerificationOTP } = require("../utils/emailService.js");
-const driver = require("../models/driver.js");
+const { sendPreDeliveryOTPEmail, sendDeliveryCompletedEmail } = require("../utils/emailService");
+const driver = require("../models/driver");
+const rideService = require("../utils/services.js");
 
 // FIND NEARBY DRIVERS FOR GOODS  (["minitruck", "truck"])
 
@@ -50,11 +50,10 @@ exports.findDriverNearByForFreight = async (req, res) => {
       status: "online",
       "availability.isAvailable": true,
       services: serviceType,
-      vehicleType: { $in: ["auto","minitruck", "truck"] },  //for freight
     })
       .limit(20)
       .lean();
-
+// console.log("===>",drivers)
     if (!drivers.length)
       return res
         .status(404)
@@ -66,8 +65,9 @@ exports.findDriverNearByForFreight = async (req, res) => {
 
     const driverIds = drivers.map((d) => d._id);
     const vehicles = await Vehicle.find({ driver: { $in: driverIds } }).lean();
+console.log("driverIds===>",driverIds);
 
-     const fareRates = {
+      const fareRates = {
       bike: { base: 20, perKm: 8, perMin: 1, surge: 1.0 },
       auto: { base: 30, perKm: 14, perMin: 1.5, surge: 1.0 },
       car: { base: 50, perKm: 20, perMin: 2, surge: 1.0 },
@@ -142,7 +142,8 @@ exports.findDriverNearByForFreight = async (req, res) => {
           );
         }
 
-        return {
+        return  {
+
           _id: driver._id,
           name: driver.name,
           phone: driver.phone,
@@ -162,14 +163,22 @@ exports.findDriverNearByForFreight = async (req, res) => {
         };
       })
     );
-
+console.log("driverResults===>",driverResults);
+if(!driverResults.filter(Boolean).length){
+    return  res
+        .status(404)
+        .json({
+          success: false,
+          message: "No drivers match the specified vehicle type",
+          data: [],
+        });
+}
     res.json(driverResults.filter(Boolean));
   } catch (error) {
     console.error("Error fetching nearby drivers:", error);
     res.status(500).json({ message: "Failed to fetch nearby drivers" });
   }
 };
-
 // REQUEST FREIGHT RIDE
 
 exports.createRideForFreight = async (req, res) => {
@@ -185,14 +194,11 @@ exports.createRideForFreight = async (req, res) => {
       ItemName,
       description,
       weight,
-      quintal,
-      kilogram,
-      gram,
       userId,
       rideNotes,
-      Recipient,
-      phone,
-      email,
+      recipientName,
+      recipientPhone,
+      recipientEmail,
     } = req.body;
     if (
       !pickup ||
@@ -202,19 +208,37 @@ exports.createRideForFreight = async (req, res) => {
       !userId ||
       !ItemName ||
       !description ||
-      !Recipient ||
-      !quintal ||
-      !kilogram ||
-      !gram
+      !recipientName ||
+      !weight
     )
       return res.status(400).json({
         success: false,
         message:
-          "Pickup, destination, driver, vehicle type, ItemName, description, Recipient, quintal, kilogram, gram, and userId are required",
+          "Pickup, destination, driver, vehicle type, ItemName, description, Recipient, weight of the item and userId are required",
       });
-    const quintalInKg = parseFloat(quintal || 0) * 100; // 1 quintal = 100 kg
-    const kg = parseFloat(kilogram || 0);
-    const gramInKg = parseFloat(gram || 0) / 1000; // 1000 grams = 1 kg
+
+      if (!recipientPhone && !recipientEmail) {
+  return res.status(400).json({
+    success: false,
+    message: "At least one contact detail (phone or email) for the recipient is required",
+  });
+}
+
+      if(recipientPhone && !isValidPhone(recipientPhone)){
+        return res.status(400).json({
+          success: false,
+          message: "Invalid recipient phone number format",
+        });
+      }
+       if(recipientEmail && !isValidEmail(recipientEmail)){
+        return res.status(400).json({
+          success: false,
+          message: "Invalid recipient email format",
+        });
+      }
+        const quintalInKg = parseFloat(weight.quintal || 0) * 100; // 1 quintal = 100 kg
+    const kg = parseFloat(weight.kilogram || 0);
+    const gramInKg = parseFloat(weight.gram || 0) / 1000; // 1000 grams = 1 kg
 
     const totalWeightKg = quintalInKg + kg + gramInKg;
 
@@ -225,6 +249,7 @@ exports.createRideForFreight = async (req, res) => {
         message: "Weight should be between 1 and 2 quintals (100kg to 200kg)",
       });
     }
+
     const driver = await Driver.findById(driverId);
     if (
       !driver ||
@@ -245,19 +270,20 @@ exports.createRideForFreight = async (req, res) => {
       distance = distanceData.distance.value / 1000;
       duration = distanceData.duration.value / 60;
 
-   const fareRates = {
+      const fareRates = {
         auto: { base: 30, perKm: 14 },
+        car: { base: 50, perKm: 20 },
         minitruck: { base: 80, perKm: 30 },
         truck: { base: 120, perKm: 35}
       };
 
-      const rate = fareRates[vehicleType] || fareRates.truck;
+      const rate = fareRates[vehicleType] || fareRates.auto;
       estimatedFare = Math.round(rate.base + distance * rate.perKm);
     } catch (error) {
       distance = 5;
       duration = 15;
       estimatedFare =
-        vehicleType === "auto" ? 490 : vehicleType === "minitruck" ? 2550 : 4375;
+        vehicleType === "auto" ? 490 : vehicleType === "car" ? 1100 : 1700;
     }
 
     const ride = new Ride({
@@ -298,22 +324,24 @@ exports.createRideForFreight = async (req, res) => {
       rideNotes: rideNotes || "",
       status: "requested",
       OTPForStartRide: Math.floor(1000 + Math.random() * 9000),
-      // requestedAt: new Date(),
+    //   requestedAt: new Date(),
       serviceDetails: {
         name: ItemName,
         description: description,
-        weight: {
-          quintal: quintalInKg,
+         weight: {
+          quintal: weight.quintal ? parseFloat(weight.quintal) : 0,
           kilogram: kg,
           gram: gramInKg,
         },
         deliverTo: {
-          name: Recipient,
-          phone: phone,
-          email: email,
-        },
-        preDeliveryOTP: 0,
-        preDeliveryOTPVerified: false,
+        name: recipientName,
+        phone: recipientPhone,
+        email: recipientEmail,
+      },
+      preDeliveryOTP: 0,
+      preDeliveryOTPVerified: false,
+      preDeliveryOTPExpire: null
+
       },
           rating: {
       userRating: 0,
@@ -345,13 +373,12 @@ exports.createRideForFreight = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Ride for Freight request error:", error.message);
+    console.error("Ride for Freight request error:", error);
     res
       .status(500)
       .json({ success: false, message: "Failed to request ride for Freight" });
   }
 };
-
 // Confirm Freight Ride by driver
 
 exports.acceptedFreightRideByDriverr = async (req, res) => {
@@ -418,37 +445,38 @@ exports.startFreight = async (req, res) => {
     }
 
     // Extract fields safely
-    const {
-      pickup,
-      destination,
-      fare,
-      distance,
-      duration,
-      status,
-      user,
-      vehicleType,
-      serviceType,
-      paymentMethod,
-      paymentStatus,
-      driver,
-    } = ride;
+    // const {
+    //   pickup,
+    //   destination,
+    //   fare,
+    //   distance,
+    //   duration,
+    //   status,
+    //   user,
+    //   vehicleType,
+    //   serviceType,
+    //   paymentMethod,
+    //   paymentStatus,
+    //   driver,
+    // } = ride;
 
     return res.status(200).json({
       success: true,
-      data: {
-        pickup,
-        destination,
-        fare,
-        distance,
-        duration,
-        status,
-        user,
-        vehicleType,
-        serviceType,
-        paymentMethod,
-        paymentStatus,
-        driver,
-      },
+      data: ride
+      //  {
+      //   pickup,
+      //   destination,
+      //   fare,
+      //   distance,
+      //   duration,
+      //   status,
+      //   user,
+      //   vehicleType,
+      //   serviceType,
+      //   paymentMethod,
+      //   paymentStatus,
+      //   driver,
+      // },
     });
   } catch (err) {
     console.error(err);

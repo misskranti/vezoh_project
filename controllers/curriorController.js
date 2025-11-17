@@ -49,7 +49,7 @@ exports.findDriverNearByForCurior = async (req, res) => {
       status: "online",
       "availability.isAvailable": true,
       services: serviceType,
-      vehicleType: { $in: ["car", "auto","minitruck", "truck"] }, //for curior
+      // vehicleType: { $in: ["car", "auto","minitruck", "truck"] }, //for curior
     })
       .limit(20)
       .lean();
@@ -677,7 +677,7 @@ exports.sendOTPBeforeDelivery = async (req, res) => {
 
     const ride = await Ride.findOne({
       _id: rideId,
-      driver: driverId,
+      // driver: driverId,
       status: "started",
     }).populate("user", "_id name email phone");
 
@@ -687,6 +687,12 @@ exports.sendOTPBeforeDelivery = async (req, res) => {
         message: "Ride not found or not started.",
       });
     }
+    if(ride.driver.toString() !== driverId){
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: You are not assigned to this ride.",
+      });
+    };
    if(ride.serviceDetails.preDeliveryOTPVerified){     
   return res.status(400).json({
         success: false,
@@ -742,7 +748,6 @@ exports.verifyOTPBeforeDelivery = async (req, res) => {
 
     const getRide = await Ride.findOne({
       _id:rideId,
-      driver: driverId,
       status: "started",
     }).populate("user", "_id name email phone");
 
@@ -750,6 +755,12 @@ exports.verifyOTPBeforeDelivery = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Ride not found or not started." });
+        
+        if(getRide.driver.toString() !== driverId){
+      return res.status(403).json({ success: false,
+        message: "Unauthorized: You are not assigned to this ride.",    
+      })
+        }
 
  if(getRide.serviceDetails.preDeliveryOTPVerified){     
   return res.status(400).json({

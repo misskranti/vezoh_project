@@ -136,7 +136,6 @@ console.log("driverIds===>",driverIds)
             err.message
           );
         }
-
         return {
           _id: driver._id,
           name: driver.name,
@@ -157,7 +156,7 @@ console.log("driverIds===>",driverIds)
         };
       })
     );
-
+console.log("driverResults===>",driverResults);
     res.json(driverResults.filter(Boolean));
   } catch (error) {
     console.error("Error fetching nearby drivers:", error);

@@ -100,7 +100,7 @@ router.get("/active", auth, activeRideQueryValidator, throwError, activeRide);
 router.patch("/rideAccespted/:rideId", auth, acceptedRideByDriver)
 
 //start Ride
-//router.patch("/startRide", auth, startRide);
+router.patch("/startRide", auth, startRide);
 
 // Cancel Ride
 router.put("/cancel/:rideId", auth, cancelRideValidator, throwError, cancelRide);
